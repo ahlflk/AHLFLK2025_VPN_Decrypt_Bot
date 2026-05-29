@@ -36,7 +36,7 @@ DEFAULT_LIMIT = 5
 
 GITHUB_TOKEN = os.getenv("GH_TOKEN") 
 REPO_OWNER = "ahlflk" 
-REPO_NAME = "Approval" 
+REPO_NAME = "AHLFLK2025_VPN_Decrypt_Bot" 
 FILE_PATH = "key.txt" 
 RESELLER_FILE_PATH = "resellers.txt" 
 
