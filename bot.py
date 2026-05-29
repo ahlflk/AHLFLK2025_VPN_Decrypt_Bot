@@ -47,7 +47,7 @@ DB_FILE = os.path.join(BASE_DIR, "keys_management.db")
 
 user_states = {}
 reseller_temp_data = {}
-MENU_BUTTONS = ["➕ Add VIP User", "🔑 My VIP Users", "✏️ Edit VIP", "🗑 Delete VIP", "👤 Create Reseller", "📊 Reseller List", "🗑 Delete Reseller", "🌐 View All VIPs"]
+MENU_BUTTONS = ["🌐 VPN Decrypt List", "➕ Add VIP User", "🔑 My VIP Users", "✏️ Edit VIP", "🗑 Delete VIP", "👤 Create Reseller", "📊 Reseller List", "🗑 Delete Reseller", "🌐 View All VIPs"]
 
 # ==========================================
 # 3. CORE MATH & XXTEA DECRYPTION ALGORITHM
@@ -345,6 +345,9 @@ def get_today_added_count(user_id):
 
 def get_main_keyboard(user_id):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    # အပေါ်ဆုံးမှာ "🌐 VPN Decrypt List" ခလုတ်ကို နေရာအပြည့် ထားပေးထားပါတယ်
+    markup.add(types.KeyboardButton("🌐 VPN Decrypt List"))
+    
     if is_reseller(user_id):
         markup.add("➕ Add VIP User", "🔑 My VIP Users", "✏️ Edit VIP", "🗑 Delete VIP")
     if is_admin(user_id):
@@ -354,16 +357,16 @@ def get_main_keyboard(user_id):
 # ==========================================
 # 6. TELEGRAM BOT HANDLERS & EVENTS
 # ==========================================
-@bot.message_handler(commands=['start', 'help'])
-def send_welcome(message):
-    user_id = message.from_user.id
-    user_states[user_id] = None 
+def display_decrypt_list(message_or_call, user_id, chat_id):
+    """ Decrypt List ကို ထုတ်ပြပေးသည့် ဘုံ Function """
     pull_data_from_github()
-    
-    # VIP & Reseller Access Checker
     is_vip, exp_status = check_vip_status(user_id)
+    
     if not is_vip:
-        bot.reply_to(message, f"🚫 **သင်သည် VIP စနစ်အသုံးပြုခွင့် မရှိသေးပါ!**\n\nသင့်ရဲ့ Telegram ID: `{user_id}` အား Admin ထံပေးပို့၍ VIP သက်တမ်းဝယ်ယူပါ။")
+        if isinstance(message_or_call, types.Message):
+            bot.reply_to(message_or_call, f"🚫 **သင်သည် VIP စနစ်အသုံးပြုခွင့် မရှိသေးပါ!**\n\nသင့်ရဲ့ Telegram ID: `{user_id}` အား Admin ထံပေးပို့၍ VIP သက်တမ်းဝယ်ယူပါ။")
+        else:
+            bot.send_message(chat_id, f"🚫 **သင်သည် VIP စနစ်အသုံးပြုခွင့် မရှိသေးပါ!**\n\nသင့်ရဲ့ Telegram ID: `{user_id}` အား Admin ထံပေးပို့၍ VIP သက်တမ်းဝယ်ယူပါ။")
         return
 
     configs = get_vpn_configs()
@@ -373,8 +376,28 @@ def send_welcome(message):
     for index, vpn in enumerate(configs, start=1):
         markup.add(types.InlineKeyboardButton(f"[{index}] {vpn['name']}", callback_data=f"dec_{vpn['id']}"))
         
-    bot.reply_to(message, welcome_text, reply_markup=get_main_keyboard(user_id), parse_mode="Markdown")
-    if configs: bot.send_message(message.chat.id, "👇 Decrypt Configurations List:", reply_markup=markup)
+    if isinstance(message_or_call, types.Message):
+        bot.reply_to(message_or_call, welcome_text, reply_markup=get_main_keyboard(user_id), parse_mode="Markdown")
+    else:
+        bot.send_message(chat_id, welcome_text, reply_markup=get_main_keyboard(user_id), parse_mode="Markdown")
+        
+    if configs: 
+        bot.send_message(chat_id, "👇 Decrypt Configurations List:", reply_markup=markup)
+    else:
+        bot.send_message(chat_id, "❌ စနစ်ထဲတွင် VPN Config များ ထည့်သွင်းထားခြင်း မရှိသေးပါ။")
+
+@bot.message_handler(commands=['start', 'help'])
+def send_welcome(message):
+    user_id = message.from_user.id
+    user_states[user_id] = None 
+    display_decrypt_list(message, user_id, message.chat.id)
+
+# ခလုတ်အသစ် "🌐 VPN Decrypt List" ကို နှိပ်လိုက်ရင် ဖမ်းပေးမယ့်နေရာ
+@bot.message_handler(func=lambda msg: msg.text == "🌐 VPN Decrypt List")
+def handle_decrypt_list_button(message):
+    user_id = message.from_user.id
+    user_states[user_id] = None 
+    display_decrypt_list(message, user_id, message.chat.id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('dec_'))
 def handle_decrypt_callback(call):
@@ -508,7 +531,7 @@ def admin_create_reseller(message):
     user_states[message.from_user.id] = 'w_r_id'
     bot.reply_to(message, "👤 Reseller ရဲ့ **Telegram User ID** ကို ပို့ပေးပါ-")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_id' and msg.text not in MENU_BUTTONS)
+@bot.message_handler(func=lambda msg: user_states.get(message.from_user.id) == 'w_r_id' and msg.text not in MENU_BUTTONS)
 def process_r_id(message):
     try:
         reseller_id = int(message.text.strip())
