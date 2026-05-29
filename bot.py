@@ -303,7 +303,6 @@ def is_reseller(user_id):
     return res is not None
 
 def check_vip_status(user_id):
-    """ အသုံးပြုသူသည် VIP စာရင်းထဲရှိပြီး သက်တမ်းကျန်မကျန် စစ်ဆေးပေးသည် """
     if is_admin(user_id) or is_reseller(user_id): return True, "Unlimited"
     
     conn = sqlite3.connect(DB_FILE)
@@ -345,7 +344,6 @@ def get_today_added_count(user_id):
 
 def get_main_keyboard(user_id):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    # အပေါ်ဆုံးမှာ "🌐 VPN Decrypt List" ခလုတ်ကို နေရာအပြည့် ထားပေးထားပါတယ်
     markup.add(types.KeyboardButton("🌐 VPN Decrypt List"))
     
     if is_reseller(user_id):
@@ -358,7 +356,6 @@ def get_main_keyboard(user_id):
 # 6. TELEGRAM BOT HANDLERS & EVENTS
 # ==========================================
 def display_decrypt_list(message_or_call, user_id, chat_id):
-    """ Decrypt List ကို ထုတ်ပြပေးသည့် ဘုံ Function """
     pull_data_from_github()
     is_vip, exp_status = check_vip_status(user_id)
     
@@ -392,7 +389,6 @@ def send_welcome(message):
     user_states[user_id] = None 
     display_decrypt_list(message, user_id, message.chat.id)
 
-# ခလုတ်အသစ် "🌐 VPN Decrypt List" ကို နှိပ်လိုက်ရင် ဖမ်းပေးမယ့်နေရာ
 @bot.message_handler(func=lambda msg: msg.text == "🌐 VPN Decrypt List")
 def handle_decrypt_list_button(message):
     user_id = message.from_user.id
@@ -531,25 +527,34 @@ def admin_create_reseller(message):
     user_states[message.from_user.id] = 'w_r_id'
     bot.reply_to(message, "👤 Reseller ရဲ့ **Telegram User ID** ကို ပို့ပေးပါ-")
 
-@bot.message_handler(func=lambda msg: user_states.get(message.from_user.id) == 'w_r_id' and msg.text not in MENU_BUTTONS)
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_id' and msg.text not in MENU_BUTTONS)
 def process_r_id(message):
+    admin_id = message.from_user.id
     try:
         reseller_id = int(message.text.strip())
-        reseller_temp_data[message.from_user.id] = {'id': reseller_id}
-        user_states[message.from_user.id] = 'w_r_name'
+        reseller_temp_data[admin_id] = {'id': reseller_id}
+        user_states[admin_id] = 'w_r_name'
         bot.reply_to(message, "✍️ သတ်မှတ်မည့် **Reseller နာမည်** ပို့ပေးပါ-")
-    except: bot.reply_to(message, "❌ ID မှားယွင်းနေပါသည်။")
+    except: 
+        bot.reply_to(message, "❌ ID မှားယွင်းနေပါသည်။")
+        user_states[admin_id] = None
 
 @bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_name' and msg.text not in MENU_BUTTONS)
 def process_r_name(message):
     admin_id = message.from_user.id
+    if admin_id not in reseller_temp_data:
+        user_states[admin_id] = None
+        return
     reseller_temp_data[admin_id]['name'] = message.text.strip()
     user_states[admin_id] = 'w_r_limit'
     bot.reply_to(message, "📊 တစ်ရက်လျှင် Add ခွင့်ပြုမည့် **VIP အရေအတွက် (Limit)** ကို ပို့ပေးပါ-")
 
-@bot.message_handler(func=lambda msg: user_states.get(admin_id := msg.from_user.id) == 'w_r_limit' and msg.text not in MENU_BUTTONS)
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_limit' and msg.text not in MENU_BUTTONS)
 def process_r_limit(message):
     admin_id = message.from_user.id
+    if admin_id not in reseller_temp_data:
+        user_states[admin_id] = None
+        return
     try:
         r_limit = int(message.text.strip())
         r_id = reseller_temp_data[admin_id]['id']
@@ -562,8 +567,11 @@ def process_r_limit(message):
         conn.close()
         bot.reply_to(message, f"✅ Reseller: `{r_name}` အား ဖန်တီးပြီးပါပြီ။ Cloud သို့ တင်နေပါသည်...")
         sync_resellers_to_github()
-    except: bot.reply_to(message, "❌ အကန့်အသတ် မှားယွင်းနေပါသည်။")
+    except: 
+        bot.reply_to(message, "❌ အကန့်အသတ် မှားယွင်းနေပါသည်။")
+    
     user_states[admin_id] = None
+    if admin_id in reseller_temp_data: del reseller_temp_data[admin_id]
 
 @bot.message_handler(func=lambda msg: msg.text == "📊 Reseller List")
 def admin_view_resellers(message):
@@ -579,7 +587,7 @@ def admin_view_resellers(message):
     for r in rows: res += f"• {r[1]} (ID: `{r[0]}`) - Limit: `{r[2]} ခု/ရက်`\n"
     bot.reply_to(message, res, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: msg.text == "🗑 Delete Reseller" and is_admin(msg.from_user.id))
+@bot.message_handler(func=lambda msg: msg.text == "🗑 Delete Reseller" and is_admin(message.from_user.id))
 def admin_delete_reseller_menu(message):
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
@@ -603,6 +611,7 @@ def callback_delete_reseller(call):
     conn.close()
     sync_resellers_to_github()
     bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text="🗑 Reseller အား အောင်မြင်စွာ ဖျက်ထုတ်ပြီးပါပြီ။")
+    bot.answer_callback_query(call.id, text="အောင်မြင်စွာ ဖျက်ပြီးပါပြီ")
 
 @bot.message_handler(func=lambda msg: msg.text == "🌐 View All VIPs" and is_admin(msg.from_user.id))
 def admin_view_all_keys(message):
