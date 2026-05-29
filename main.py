@@ -1,3 +1,4 @@
+# Py By @AHLFLK2025
 import os
 import re
 import json
@@ -20,7 +21,7 @@ def run_server():
     app.run(host='0.0.0.0', port=port)
 
 # --- Telegram Bot Setup ---
-BOT_TOKEN = os.environ.get('BOT_TOKEN', 'YOUR_BOT_TOKEN')
+BOT_TOKEN = os.environ.get('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # ==========================================
@@ -51,7 +52,8 @@ def _fix_key(key_bytes):
 
 def decrypt_xxtea(data, key, delta):
     if len(data) == 0: return b''
-    v, k = _bytes_to_longs(data), _bytes_to_longs(_fix_key(key))
+    v = _bytes_to_longs(data)
+    k = _bytes_to_longs(_fix_key(key))
     n = len(v)
     if n < 2: return data 
 
@@ -74,21 +76,20 @@ def decrypt_xxtea(data, key, delta):
     return _longs_to_bytes(v, True)
 
 # ==========================================
-# 2. HELPER TO PARSE STR/HEX DELTA TO INT
+# 2. HELPER: PARSE DYNAMIC DELTA (HEX/INT)
 # ==========================================
 def parse_delta(delta_val):
     if isinstance(delta_val, int):
         return delta_val
     try:
-        val_str = str(delta_val).strip()
-        # အကယ်၍ အနှုတ်လက္ခဏာပါသော Hex ဖြစ်ခဲ့လျှင် (ဥပမာ - "-0x2e0405f5")
-        if val_str.startswith('-'):
-            clean_hex = val_str.replace('-', '').strip()
+        # Env ထဲက Hex စာသားထဲမှာ အနှုတ်လက္ခဏာ ပါခဲ့လျှင် (ဥပမာ - "-0x2e0405f5")
+        if isinstance(delta_val, str) and delta_val.strip().startswith('-'):
+            clean_hex = delta_val.replace('-', '').strip()
             return -int(clean_hex, 16)
         else:
-            return int(val_str, 16)
+            return int(delta_val, 16)
     except:
-        return 0x2e0ba747  # Error ဖြစ်သွားပါက default delta သုံးမည်
+        return 0x2e0ba747  # Error ဖြစ်ပါက Default Delta အဖြစ် သတ်မှတ်ပေးမည်
 
 # ==========================================
 # 3. MULTI-METHOD INNER LAYER PROCESSORS
@@ -143,7 +144,7 @@ def decrypt_inner_pnt(encrypted_str):
     except:
         return encrypted_str
 
-# JSON Object Hierarchy Walker
+# JSON Object Loop Walker
 def process_json_structure(data, method):
     if isinstance(data, dict):
         return {k: process_json_structure(v, method) for k, v in data.items()}
@@ -161,7 +162,7 @@ def process_json_structure(data, method):
         return data
 
 # ==========================================
-# 4. MAIN DECRYPT CONTROLLER
+# 4. CONTROLLER WITH DYNAMIC CONFIGS
 # ==========================================
 def perform_decryption(config_url, outer_key, outer_delta_raw, method):
     headers = {
@@ -171,7 +172,7 @@ def perform_decryption(config_url, outer_key, outer_delta_raw, method):
     with urllib.request.urlopen(req) as response:
         enc_base64 = response.read().decode('utf-8').replace('\n', '').replace('\r', '').strip()
     
-    # Hex String သို့မဟုတ် Int တန်ဖိုးကို parse လုပ်ယူခြင်း
+    # Env ထဲက Hex String ကို Integer ပြောင်းယူခြင်း
     outer_delta = parse_delta(outer_delta_raw)
     
     enc_data = base64.b64decode(enc_base64)
@@ -224,7 +225,7 @@ def handle_decrypt_callback(call):
     status_msg = bot.send_message(chat_id, f"⏳ **{selected_vpn['name']} Config ကို လှမ်းခေါ်ပြီး Decrypt လုပ်နေပါတယ်...**", parse_mode="Markdown")
     
     try:
-        # JSON ထဲက တန်ဖိုးများကို Dynamic ယူသုံးပြီး Decrypt ပြုလုပ်ခြင်း
+        # Dynamic Decryption based on chosen method and parsed hex delta
         result_json = perform_decryption(
             selected_vpn["url"], 
             selected_vpn["outer_key"], 
@@ -253,7 +254,7 @@ def handle_decrypt_callback(call):
         bot.edit_message_text(f"❌ **Error Occurred:** `{str(e)}`", chat_id, status_msg.message_id, parse_mode="Markdown")
 
 # ==========================================
-# 6. START SERVER AND BOT
+# 6. START SERVER AND BOT POLING
 # ==========================================
 if __name__ == "__main__":
     server_thread = Thread(target=run_server)
