@@ -356,14 +356,21 @@ def get_main_keyboard(user_id):
 # 6. TELEGRAM BOT HANDLERS & EVENTS
 # ==========================================
 def display_decrypt_list(message_or_call, user_id, chat_id):
+    """ Decrypt List ကို ထုတ်ပြပေးသည့် ဘုံ Function """
     pull_data_from_github()
     is_vip, exp_status = check_vip_status(user_id)
     
     if not is_vip:
+        # ID ကို တစ်ချက်နှိပ်ရုံနဲ့ Copy ယူနိုင်အောင် ပြုလုပ်ပြီး Admin Link Button ထည့်သွင်းခြင်း
+        no_vip_text = f"🚫 **သင်သည် VIP စနစ်အသုံးပြုခွင့် မရှိသေးပါ!**\n\nသင့်ရဲ့ Telegram ID: `{user_id}` (ID ကိုနှိပ်၍ Copy ယူပါ) အား Admin ထံပေးပို့၍ VIP သက်တမ်းဝယ်ယူပါ။"
+        
+        admin_markup = types.InlineKeyboardMarkup()
+        admin_markup.add(types.InlineKeyboardButton(text="💬 Contact Admin (သက်တမ်းတိုးရန်)", url="https://t.me/ahlflk2025"))
+        
         if isinstance(message_or_call, types.Message):
-            bot.reply_to(message_or_call, f"🚫 **သင်သည် VIP စနစ်အသုံးပြုခွင့် မရှိသေးပါ!**\n\nသင့်ရဲ့ Telegram ID: `{user_id}` အား Admin ထံပေးပို့၍ VIP သက်တမ်းဝယ်ယူပါ။")
+            bot.reply_to(message_or_call, no_vip_text, reply_markup=admin_markup, parse_mode="Markdown")
         else:
-            bot.send_message(chat_id, f"🚫 **သင်သည် VIP စနစ်အသုံးပြုခွင့် မရှိသေးပါ!**\n\nသင့်ရဲ့ Telegram ID: `{user_id}` အား Admin ထံပေးပို့၍ VIP သက်တမ်းဝယ်ယူပါ။")
+            bot.send_message(chat_id, no_vip_text, reply_markup=admin_markup, parse_mode="Markdown")
         return
 
     configs = get_vpn_configs()
