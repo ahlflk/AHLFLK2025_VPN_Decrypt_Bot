@@ -1,5 +1,5 @@
 # All-in-One Safe Decryptor & Telegram VIP Management Bot
-# Py By @AHLFLK2025
+# Py By @AHLFLK2025 (Optimized with Webhook & Grid Keyboard)
 import os
 import re
 import json
@@ -10,25 +10,12 @@ import requests
 import urllib.request
 from threading import Thread
 from datetime import datetime, timedelta
-from flask import Flask
+from flask import Flask, request, abort
 import telebot
 from telebot import types
 
 # ==========================================
-# 1. FLASK SERVER FOR RENDER (KEEP ALIVE)
-# ==========================================
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "All-in-One Safe Decryptor & VIP Bot is Active!"
-
-def run_server():
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
-
-# ==========================================
-# 2. CONFIGURATION & CONFIG READERS
+# 1. CONFIGURATION & CORE BOT SETUP
 # ==========================================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = 5376544115
@@ -40,7 +27,11 @@ REPO_NAME = "AHLFLK2025_VPN_Decrypt_Bot"
 FILE_PATH = "key.txt" 
 RESELLER_FILE_PATH = "resellers.txt" 
 
-bot = telebot.TeleBot(BOT_TOKEN)
+# Render Link ကို ယူရန် (ဥပမာ- https://yourapp.onrender.com)
+PUBLIC_URL = os.environ.get("PUBLIC_URL")
+
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode=None)
+app = Flask('')
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "keys_management.db")
@@ -48,6 +39,27 @@ DB_FILE = os.path.join(BASE_DIR, "keys_management.db")
 user_states = {}
 reseller_temp_data = {}
 MENU_BUTTONS = ["🌐 VPN Decrypt List", "➕ Add VIP User", "🔑 My VIP Users", "✏️ Edit VIP", "🗑 Delete VIP", "👤 Create Reseller", "📊 Reseller List", "🗑 Delete Reseller", "🌐 View All VIPs"]
+
+# ==========================================
+# 2. FLASK SERVER & WEBHOOK CONTROLLER
+# ==========================================
+@app.route('/')
+def home():
+    return "All-in-One Safe Decryptor & VIP Bot is Active!"
+
+@app.route('/' + BOT_TOKEN, methods=['POST'])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return ''
+    else:
+        abort(403)
+
+def run_server():
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
 
 # ==========================================
 # 3. CORE MATH & XXTEA DECRYPTION ALGORITHM
@@ -356,14 +368,12 @@ def get_main_keyboard(user_id):
 # 6. TELEGRAM BOT HANDLERS & EVENTS
 # ==========================================
 def display_decrypt_list(message_or_call, user_id, chat_id):
-    """ Decrypt List ကို ထုတ်ပြပေးသည့် ဘုံ Function """
+    """ Decrypt List ကို ထုတ်ပြပေးသည့် ဘုံ Function (ဘေးချင်းကပ် Grid ပုံစံ ပြုပြင်ထားသည်) """
     pull_data_from_github()
     is_vip, exp_status = check_vip_status(user_id)
     
     if not is_vip:
-        # ID ကို တစ်ချက်နှိပ်ရုံနဲ့ Copy ယူနိုင်အောင် ပြုလုပ်ပြီး Admin Link Button ထည့်သွင်းခြင်း
         no_vip_text = f"🚫 **သင်သည် VIP စနစ်အသုံးပြုခွင့် မရှိသေးပါ!**\n\nသင့်ရဲ့ Telegram ID: `{user_id}` (ID ကိုနှိပ်၍ Copy ယူပါ) အား Admin ထံပေးပို့၍ VIP သက်တမ်းဝယ်ယူပါ။"
-        
         admin_markup = types.InlineKeyboardMarkup()
         admin_markup.add(types.InlineKeyboardButton(text="💬 Contact Admin (သက်တမ်းတိုးရန်)", url="https://t.me/ahlflk2025"))
         
@@ -376,9 +386,16 @@ def display_decrypt_list(message_or_call, user_id, chat_id):
     configs = get_vpn_configs()
     welcome_text = f"👋 **Safe Decryptor & VIP Center မှ ကြိုဆိုပါတယ်!**\n\n⌛ **သင့် VIP သက်တမ်းကုန်မည့်ရက်:** `{exp_status}`\n\nDecrypt လုပ်ချင်တဲ့ VPN Config အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ -"
     
-    markup = types.InlineKeyboardMarkup(row_width=1)
+    # ခလုတ်များကို ဘေးချင်းကပ် (Row တစ်ခုလျှင် ၂ ခု) ပြသရန် markup ဆောက်ခြင်း
+    markup = types.InlineKeyboardMarkup()
+    buttons = []
     for index, vpn in enumerate(configs, start=1):
-        markup.add(types.InlineKeyboardButton(f"[{index}] {vpn['name']}", callback_data=f"dec_{vpn['id']}"))
+        btn = types.InlineKeyboardButton(f"[{index}] {vpn['name']}", callback_data=f"dec_{vpn['id']}")
+        buttons.append(btn)
+    
+    # ၂ ခုစီ ခွဲထုတ်ပြီး Row ထဲသို့ ထည့်ခြင်း
+    for i in range(0, len(buttons), 2):
+        markup.row(*buttons[i:i+2])
         
     if isinstance(message_or_call, types.Message):
         bot.reply_to(message_or_call, welcome_text, reply_markup=get_main_keyboard(user_id), parse_mode="Markdown")
@@ -420,7 +437,7 @@ def handle_decrypt_callback(call):
         bot.send_message(chat_id, "❌ ရွေးချယ်ထားသော VPN Config ကို စနစ်ထဲမှာ ရှာမတွေ့ပါ။")
         return
 
-    status_msg = bot.send_message(chat_id, f"⏳ **{selected_vpn['name']} Config ကို Decrypt လုပ်နေပါတယ်...**", parse_mode="Markdown")
+    status_msg = bot.send_message(chat_id, f"⏳ **{selected_vpn['name']} VPN Config ကို Decrypt လုပ်နေပါတယ်...**", parse_mode="Markdown")
     try:
         result_json = perform_decryption(selected_vpn["url"], selected_vpn["outer_key"], selected_vpn["outer_delta"], selected_vpn["method"])
         temp_file_path = f"{vpn_id}_decrypted.json"
@@ -432,7 +449,10 @@ def handle_decrypt_callback(call):
             bot.send_document(chat_id, doc, caption=f"✅ **{selected_vpn['name']} Decrypted Successfully!**\n\n📌 *By @AHLFLK2025*", parse_mode="Markdown")
         if os.path.exists(temp_file_path): os.remove(temp_file_path)
     except Exception as e:
-        bot.edit_message_text(f"❌ **Error:** `{str(e)}`", chat_id, status_msg.message_id, parse_mode="Markdown")
+        try:
+            bot.edit_message_text(f"❌ **Error:** `{str(e)}`", chat_id, status_msg.message_id, parse_mode="Markdown")
+        except:
+            bot.send_message(chat_id, f"❌ **Error:** `{str(e)}`", parse_mode="Markdown")
 
 # ----------------- VIP MANAGEMENT SYSTEMS -----------------
 @bot.message_handler(func=lambda msg: msg.text == "➕ Add VIP User" and is_reseller(msg.from_user.id))
@@ -634,13 +654,25 @@ def admin_view_all_keys(message):
     bot.reply_to(message, res, parse_mode="Markdown")
 
 # ==========================================
-# 8. START SERVER AND BOT POLING
+# 7. WEBHOOK INITIALIZATION & RUN ENGINE
 # ==========================================
 if __name__ == "__main__":
     init_db()
     pull_data_from_github()
+    
+    # Flask Web server ကို နောက်ကွယ်မှာ Thread တစ်ခုအနေနဲ့ စပတ်ခြင်း
     server_thread = Thread(target=run_server)
     server_thread.daemon = True
     server_thread.start()
-    print("Bot is up and polling...")
-    bot.infinity_polling()
+    
+    # Webhook စနစ် စတင်ပြင်ဆင်ခြင်း
+    if PUBLIC_URL:
+        bot.remove_webhook()
+        # Webhook URL ကို သတ်မှတ်ခြင်း (ဥပမာ- https://myapp.onrender.com/YOUR_BOT_TOKEN)
+        bot.set_webhook(url=f"{PUBLIC_URL}/{BOT_TOKEN}")
+        print(f"[+] Webhook set successfully at: {PUBLIC_URL}")
+    else:
+        # Localhost မှာ စမ်းသပ်ရင် Polling ကို သုံးနိုင်ရန်
+        bot.remove_webhook()
+        print("[!] PUBLIC_URL not found, falling back to polling...")
+        bot.infinity_polling()
