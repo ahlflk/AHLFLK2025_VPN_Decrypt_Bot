@@ -660,19 +660,21 @@ if __name__ == "__main__":
     init_db()
     pull_data_from_github()
     
-    # Flask Web server ကို နောက်ကွယ်မှာ Thread တစ်ခုအနေနဲ့ စပတ်ခြင်း
-    server_thread = Thread(target=run_server)
-    server_thread.daemon = True
-    server_thread.start()
-    
-    # Webhook စနစ် စတင်ပြင်ဆင်ခြင်း
+    # Render ပေါ်မှာဆိုရင် Webhook စနစ်ကို သုံးမယ်
     if PUBLIC_URL:
-        bot.remove_webhook()
-        # Webhook URL ကို သတ်မှတ်ခြင်း (ဥပမာ- https://myapp.onrender.com/YOUR_BOT_TOKEN)
-        bot.set_webhook(url=f"{PUBLIC_URL}/{BOT_TOKEN}")
-        print(f"[+] Webhook set successfully at: {PUBLIC_URL}")
+        try:
+            bot.remove_webhook()
+            bot.set_webhook(url=f"{PUBLIC_URL}/{BOT_TOKEN}")
+            print(f"[+] Webhook set successfully at: {PUBLIC_URL}")
+        except Exception as e:
+            print(f"[-] Webhook Error: {str(e)}")
+            
+        # Flask Web Server ကို Main Engine အဖြစ် အောက်ဆုံးမှာ ပတ်ထားမယ် (ဒါမှ Bot မပိတ်မှာပါ)
+        port = int(os.environ.get('PORT', 8080))
+        app.run(host='0.0.0.0', port=port)
+        
+    # ကိုယ့်စက် (Local) မှာ စမ်းသပ်ရင် Polling စနစ်နဲ့ ပတ်မယ်
     else:
-        # Localhost မှာ စမ်းသပ်ရင် Polling ကို သုံးနိုင်ရန်
         bot.remove_webhook()
         print("[!] PUBLIC_URL not found, falling back to polling...")
         bot.infinity_polling()
