@@ -1,2 +1,2 @@
-# Telegram_ID | Reseller_Name | Unit
-123456789 | Ko_Ko | 5
+5376544115 | Admin_AHLFLK | 9999999
+123456789 | Test_Reseller | 5
