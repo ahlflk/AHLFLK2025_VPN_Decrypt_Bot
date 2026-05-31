@@ -171,7 +171,6 @@ def process_json_structure(data, method):
         return data
     return data
 
-# ပြင်ဆင်ချက် - Config URL 403 Forbidden Error မတက်စေရန် Fake User-Agent အပြည့်အစုံထည့်သွင်းခြင်း
 def perform_decryption(config_url, outer_key, outer_delta_raw, method):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -181,7 +180,7 @@ def perform_decryption(config_url, outer_key, outer_delta_raw, method):
         enc_base64 = response.read().decode('utf-8').replace('\n', '').replace('\r', '').strip()
         
     outer_delta = parse_delta(outer_delta_raw)
-    enc_data = base64.b64decode(enc_data_raw if 'enc_data_raw' in locals() else enc_base64)
+    enc_data = base64.b64decode(enc_base64)
     dec_bytes = decrypt_xxtea(enc_data, outer_key.encode('utf-8'), outer_delta)
     raw_json_str = dec_bytes.decode('utf-8', errors='ignore').replace('\\/', '/')
     json_obj = json.loads(raw_json_str)
@@ -305,7 +304,6 @@ def sync_resellers_to_github():
         requests.put(url, headers=headers, json=payload)
     except Exception as e: print(f"[-] Reseller Sync Error: {str(e)}")
 
-# --- VIP Logic Checks ---
 def is_admin(user_id): 
     if user_id == ADMIN_ID: return True
     conn = sqlite3.connect(DB_FILE)
@@ -514,7 +512,7 @@ def cmd_my_vips(message):
     bot.reply_to(message, res, parse_mode="Markdown")
 
 # ==========================================================
-# ✏️ Edit VIP အပိုင်း (Reply တက်ရန်နှင့် Logic သေချာပြင်ဆင်ထားမှု)
+# ✏️ Edit VIP (Emoji အမှားပြင်ဆင်ပြီး ဖြစ်ပေါ်လာသော Error ကာကွယ်မှု)
 # ==========================================================
 @bot.message_handler(func=lambda msg: msg.text == "✏️ Edit VIP")
 def admin_reseller_edit_vip_menu(message):
@@ -557,16 +555,16 @@ def process_edit_vip_id(message):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     if is_admin(user_id):
-        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (int(target_id_str),))
+        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (target_id_str,))
     else:
-        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ? AND added_by = ?", (int(target_id_str), user_id))
+        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ? AND added_by = ?", (target_id_str, user_id))
     row = cursor.fetchone()
     conn.close()
     
     if not row:
         return bot.reply_to(message, "❌ ဤ Telegram ID ဖြင့် VIP အား ရှာမတွေ့ပါ။ (သို့မဟုတ်) သင်ပြင်ဆင်ခွင့်မရှိပါ။")
         
-    reseller_temp_data[user_id] = {'target_id': int(target_id_str), 'name': row[0]}
+    reseller_temp_data[user_id] = {'target_id': target_id_str, 'name': row[0]}
     user_states[user_id] = 'w_edit_vip_duration'
     bot.reply_to(message, f"👤 အကောင့်: **{row[0]}**\n\n✍️ တိုးမြှင့်လိုသော သက်တမ်းအား `Unit | Duration` ပုံစံဖြင့် ရိုက်ပို့ပေးပါ-\n(ဥပမာ- `30 | d` သို့မဟုတ် `1 | m`)")
 
@@ -589,7 +587,7 @@ def process_edit_vip_duration(message):
     if len(parts) != 2 or not parts[0].isdigit() or parts[1].lower() not in ['d', 'm']:
         return bot.reply_to(message, "❌ Format မှားယွင်းနေပါသည်။ ဥပမာ- `30 | d` ဟု သေချာစွာ ပြန်ရိုက်ပို့ပေးပါဗျာ။")
         
-    unit_val = int(parts[0])
+    unit_val = parts[0]
     dur_type = parts[1].lower()
     
     pull_data_from_github()
@@ -606,7 +604,7 @@ def process_edit_vip_duration(message):
     if user_id in reseller_temp_data: del reseller_temp_data[user_id]
 
 # ==========================================================
-# 🗑 Delete VIP အပိုင်း (Reply တက်ရန်နှင့် Logic သေချာပြင်ဆင်ထားမှု)
+# 🗑 Delete VIP (Emoji စာသားမှန်ကန်အောင် ပြင်ဆင်ထားမှု)
 # ==========================================================
 @bot.message_handler(func=lambda msg: msg.text == "🗑 Delete VIP")
 def admin_reseller_delete_vip_menu(message):
@@ -651,16 +649,16 @@ def process_delete_vip_by_id(message):
     cursor = conn.cursor()
     
     if is_admin(user_id):
-        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (int(id_to_del),))
+        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (id_to_del,))
     else:
-        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ? AND added_by = ?", (int(id_to_del), user_id))
+        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ? AND added_by = ?", (id_to_del, user_id))
     row = cursor.fetchone()
     
     if not row:
         conn.close()
         return bot.reply_to(message, "❌ ဤ Telegram ID ဖြင့် VIP အား ရှာမတွေ့ပါ။ (သို့မဟုတ်) သင်ဖျက်ခွင့်မရှိသော အကောင့်ဖြစ်နိုင်ပါသည်။")
         
-    cursor.execute("DELETE FROM auth_keys WHERE target_id = ?", (int(id_to_del),))
+    cursor.execute("DELETE FROM auth_keys WHERE target_id = ?", (id_to_del,))
     conn.commit()
     conn.close()
     
@@ -815,7 +813,7 @@ def admin_view_all_keys(message):
     conn.close()
     if not rows: return bot.reply_to(message, "📭 Database ထဲတွင် VIP အကောင့် မရှိသေးပါ။")
     res = f"🌐 **VIP အသုံးပြုသူ အားလုံးစာရင်း ({len(rows)} ဦး):**\n\n"
-    for r in rows: res += f"🆔 `{r[0]}` | 👤 `{r[1]}` | {r[2]} {r[3]}\n"
+    for r in rows: res += f"🆔 `{r[0]}` | 👤 `{r[1]` | {r[2]} {r[3]}\n"
     bot.reply_to(message, res, parse_mode="Markdown")
 
 # ==========================================
