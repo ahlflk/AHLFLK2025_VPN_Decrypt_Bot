@@ -642,30 +642,52 @@ def admin_delete_reseller_menu(message):
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    # ဖျက်ထုတ်မည့်စာရင်းတွင် Admin မိမိကိုယ်တိုင် မပါဝင်စေရန် ခြွင်းချက်ထားခြင်း
-    cursor.execute("SELECT tg_id, username FROM users WHERE role = 'reseller' AND tg_id != ?", (ADMIN_ID,))
+    # Admin မဟုတ်သော လက်ရှိ Reseller စာရင်းကို အရင်ဆွဲထုတ်ပြခြင်း
+    cursor.execute("SELECT tg_id, username, daily_limit FROM users WHERE role = 'reseller' AND tg_id != ?", (ADMIN_ID,))
     rows = cursor.fetchall()
     conn.close()
+    
     if not rows: 
         return bot.reply_to(message, "📭 ဖျက်ရန် Reseller မရှိပါ။")
-    markup = types.InlineKeyboardMarkup()
-    for r in rows: 
-        markup.add(types.InlineKeyboardButton(text=f"❌ {r[1]}", callback_data=f"del_reseller_{r[0]}"))
-    bot.send_message(message.chat.id, "🗑 **ဖျက်ထုတ်လိုသော Reseller အား နှိပ်ပါ-**", reply_markup=markup)
+        
+    # ရှိသမျှ စာရင်းကို ရှင်းလင်းစွာ အရင်ထုတ်ပြမည်
+    res_list = "👥 **လက်ရှိ Reseller စာရင်းများ:**\n\n"
+    for r in rows:
+        res_list += f"🆔 `{r[0]}` | 👤 **{r[1]}** (Limit: {r[2]}/ရက်)\n"
+    
+    res_list += "\n✍️ **ဖျက်ထုတ်လိုသော Reseller ၏ Telegram ID ကို အောက်တွင် ရိုက်ပို့ပေးပါ-**"
+    
+    user_states[message.from_user.id] = 'w_del_reseller'
+    bot.send_message(message.chat.id, res_list, parse_mode="Markdown")
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("del_reseller_"))
-def callback_delete_reseller(call):
-    if not (is_admin(call.from_user.id) or call.from_user.id == ADMIN_ID): 
-        return
-    reseller_id = int(call.data.replace("del_reseller_", ""))
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_del_reseller' and msg.text not in MENU_BUTTONS)
+def process_delete_reseller_by_id(message):
+    user_id = message.from_user.id
+    id_to_del = message.text.strip()
+    
+    if not id_to_del.isdigit():
+        return bot.reply_to(message, "❌ မှားယွင်းနေပါသည်။ Telegram ID (ဂဏန်းသီးသန့်) ကိုသာ ရိုက်ပို့ပေးပါဗျာ။")
+        
+    pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM users WHERE tg_id = ?", (reseller_id,))
+    
+    # ရိုက်ပို့လိုက်သော ID က စနစ်ထဲမှာ တကယ်ရှိမရှိ အရင်စစ်ဆေးခြင်း
+    cursor.execute("SELECT username FROM users WHERE tg_id = ? AND role = 'reseller'", (int(id_to_del),))
+    row = cursor.fetchone()
+    
+    if not row:
+        conn.close()
+        return bot.reply_to(message, "❌ ဤ Telegram ID ဖြင့် Reseller အား စနစ်ထဲတွင် ရှာမတွေ့ပါ။ ID မှန်ကန်မှု ရှိမရှိ ပြန်စစ်ပေးပါ။")
+        
+    # တကယ်ရှိပါက အပြီးတိုင် ဖျက်ဆီးခြင်း
+    cursor.execute("DELETE FROM users WHERE tg_id = ?", (int(id_to_del),))
     conn.commit()
     conn.close()
+    
     sync_resellers_to_github()
-    bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text="🗑 Reseller အား အောင်မြင်စွာ ဖျက်ထုတ်ပြီးပါပြီ။")
-    bot.answer_callback_query(call.id, text="အောင်မြင်စွာ ဖျက်ပြီးပါပြီ")
+    bot.reply_to(message, f"✅ Reseller: **{row[0]}** (ID: `{id_to_del}`) အား စနစ်ထဲမှ အောင်မြင်စွာ ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode="Markdown")
+    user_states[user_id] = None
 
 @bot.message_handler(func=lambda msg: msg.text == "🌐 View All VIPs" and is_admin(msg.from_user.id))
 def admin_view_all_keys(message):
