@@ -1,2 +1,1 @@
-# TelegramID | Reseller_Name | Unit
-# 0123456789 | Main_Admin | 9999999
+5376544115 | Main_Admin | 9999999
