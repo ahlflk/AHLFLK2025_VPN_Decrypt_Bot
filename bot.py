@@ -391,16 +391,16 @@ def display_decrypt_list(message_or_call, user_id, chat_id):
     configs = get_vpn_configs()
     welcome_text = f"👋 **Safe Decryptor & VIP Center မှ ကြိုဆိုပါတယ်!**\n\n⌛ **သင့် VIP သက်တမ်းကုန်မည့်ရက်:** `{exp_status}`\n\nDecrypt လုပ်ချင်တဲ့ VPN Config အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ -"
     
-    # ပြင်ဆင်ချက် - Row Width အား 3 သို့ ပြောင်းလဲခြင်း
-    markup = types.InlineKeyboardMarkup(row_width=3)
+    # ပြင်ဆင်ချက် - Row Width အား 2 သို့ ပြောင်းလဲခြင်း
+    markup = types.InlineKeyboardMarkup(row_width=2)
     buttons = []
     for index, vpn in enumerate(configs, start=1):
         btn = types.InlineKeyboardButton(f"[{index}] {vpn['name']}", callback_data=f"dec_{vpn['id']}")
         buttons.append(btn)
     
-    # ပြင်ဆင်ချက် - ၃ ခုစီ ဘေးချင်းကပ် စီတန်းပေးခြင်း
-    for i in range(0, len(buttons), 3):
-        markup.row(*buttons[i:i+3])
+    # ပြင်ဆင်ချက် - ၂ ခုစီ ဘေးချင်းကပ် စီတန်းပေးခြင်း
+    for i in range(0, len(buttons), 2):
+        markup.row(*buttons[i:i+2])
         
     if isinstance(message_or_call, types.Message):
         bot.reply_to(message_or_call, welcome_text, reply_markup=get_main_keyboard(user_id), parse_mode="Markdown")
@@ -504,7 +504,10 @@ def cmd_my_vips(message):
     for r in rows: res += f"• ID: `{r[0]}` -> နာမည်: `{r[1]}` (ရက်စွဲ: `{r[2]}`)\n"
     bot.reply_to(message, res, parse_mode="Markdown")
 
-# ပြင်ဆင်ချက် - Filter ချို့ယွင်းချက်ပြင်ဆင်ပြီး Reply တက်လာစေရန် လုပ်ဆောင်ခြင်း
+# ==========================================================
+# ပြင်ဆင်ချက် - ✏️ Edit VIP အပိုင်း (Reply တက်စေရန်နှင့် Filter စစ်ဆေးချက်များ)
+# ==========================================================
+
 @bot.message_handler(func=lambda msg: msg.text == "✏️ Edit VIP")
 def admin_reseller_edit_vip_menu(message):
     user_id = message.from_user.id
@@ -529,13 +532,21 @@ def admin_reseller_edit_vip_menu(message):
         
     res_list += "\n✍️ **သက်တမ်းပြင်ဆင်လိုသော VIP အသုံးပြုသူ၏ Telegram ID ကို အောက်တွင် ရိုက်ပို့ပေးပါ-**"
     user_states[user_id] = 'w_edit_vip_id'
-    bot.send_message(message.chat.id, res_list, parse_mode="Markdown")
+    
+    # bot.send_message နေရာတွင် bot.reply_to ဖြင့် အစားထိုးပြီး Reply Message ပြသပေးခြင်း
+    bot.reply_to(message, res_list, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_vip_id' and msg.text not in MENU_BUTTONS)
+
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_vip_id')
 def process_edit_vip_id(message):
     user_id = message.from_user.id
     target_id_str = message.text.strip()
     
+    # အကယ်၍ အသုံးပြုသူက ID မရိုက်ဘဲ အခြား Menu Button များကို နှိပ်လိုက်ပါက State ကိုဖျက်ပြီး အလုပ်လုပ်စေရန်
+    if target_id_str in MENU_BUTTONS:
+        user_states[user_id] = None
+        return
+        
     if not target_id_str.isdigit():
         return bot.reply_to(message, "❌ မှားယွင်းနေပါသည်။ Telegram ID (ဂဏန်းသီးသန့်) ကိုသာ ရိုက်ပို့ပေးပါဗျာ။")
         
@@ -555,15 +566,24 @@ def process_edit_vip_id(message):
     user_states[user_id] = 'w_edit_vip_duration'
     bot.reply_to(message, f"👤 အကောင့်: **{row[0]}**\n\n✍️ တိုးမြှင့်လိုသော သက်တမ်းအား `Unit | Duration` ပုံစံဖြင့် ရိုက်ပို့ပေးပါ-\n(ဥပမာ- `30 | d` သို့မဟုတ် `1 | m`)")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_vip_duration' and msg.text not in MENU_BUTTONS)
+
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_vip_duration')
 def process_edit_vip_duration(message):
     user_id = message.from_user.id
+    text_input = message.text.strip()
+    
+    # အကယ်၍ အသုံးပြုသူက သက်တမ်းမထည့်ဘဲ အခြား Menu Button များကို နှိပ်လိုက်ပါက State ကိုဖျက်ပြီး အလုပ်လုပ်စေရန်
+    if text_input in MENU_BUTTONS:
+        user_states[user_id] = None
+        if user_id in reseller_temp_data: del reseller_temp_data[user_id]
+        return
+
     temp = reseller_temp_data.get(user_id)
     if not temp:
         user_states[user_id] = None
         return bot.reply_to(message, "❌ Error ဖြစ်သွားပါသည်။ ခလုတ်ကို ပြန်နှိပ်ပြီး အစမှ ပြန်လုပ်ပေးပါ။")
         
-    parts = [p.strip() for p in message.text.split("|")]
+    parts = [p.strip() for p in text_input.split("|")]
     if len(parts) != 2 or not parts[0].isdigit() or parts[1].lower() not in ['d', 'm']:
         return bot.reply_to(message, "❌ Format မှားယွင်းနေပါသည်။ ဥပမာ- `30 | d` ဟု သေချာစွာ ပြန်ရိုက်ပို့ပေးပါဗျာ။")
         
@@ -583,7 +603,11 @@ def process_edit_vip_duration(message):
     user_states[user_id] = None
     if user_id in reseller_temp_data: del reseller_temp_data[user_id]
 
-# ပြင်ဆင်ချက် - Filter ချို့ယွင်းချက်ပြင်ဆင်ပြီး Reply တက်လာစေရန် လုပ်ဆောင်ခြင်း
+
+# ==========================================================
+# ပြင်ဆင်ချက် - 🗑 Delete VIP အပိုင်း (Reply တက်စေရန်နှင့် Filter စစ်ဆေးချက်များ)
+# ==========================================================
+
 @bot.message_handler(func=lambda msg: msg.text == "🗑 Delete VIP")
 def admin_reseller_delete_vip_menu(message):
     user_id = message.from_user.id
@@ -608,13 +632,21 @@ def admin_reseller_delete_vip_menu(message):
         
     res_list += "\n✍️ **ဖျက်ထုတ်လိုသော VIP အသုံးပြုသူ၏ Telegram ID ကို အောက်တွင် ရိုက်ပို့ပေးပါ-**"
     user_states[user_id] = 'w_del_vip'
-    bot.send_message(message.chat.id, res_list, parse_mode="Markdown")
+    
+    # bot.send_message နေရာတွင် bot.reply_to ဖြင့် အစားထိုးပြီး Reply Message ပြသပေးခြင်း
+    bot.reply_to(message, res_list, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_del_vip' and msg.text not in MENU_BUTTONS)
+
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_del_vip')
 def process_delete_vip_by_id(message):
     user_id = message.from_user.id
     id_to_del = message.text.strip()
     
+    # အကယ်၍ အသုံးပြုသူက ID မရိုက်ဘဲ အခြား Menu Button များကို နှိပ်လိုက်ပါက State ကိုဖျက်ပြီး အလုပ်လုပ်စေရန်
+    if id_to_del in MENU_BUTTONS:
+        user_states[user_id] = None
+        return
+        
     if not id_to_del.isdigit():
         return bot.reply_to(message, "❌ မှားယွင်းနေပါသည်။ Telegram ID (ဂဏန်းသီးသန့်) ကိုသာ ရိုက်ပို့ပေးပါဗျာ။")
         
