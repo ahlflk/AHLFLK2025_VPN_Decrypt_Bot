@@ -512,7 +512,7 @@ def cmd_my_vips(message):
     bot.reply_to(message, res, parse_mode="Markdown")
 
 # ==========================================================
-# ✏️ Edit VIP (Emoji အမှားပြင်ဆင်ပြီး ဖြစ်ပေါ်လာသော Error ကာကွယ်မှု)
+# ✏️ Edit VIP (Type Error Fixed)
 # ==========================================================
 @bot.message_handler(func=lambda msg: msg.text == "✏️ Edit VIP")
 def admin_reseller_edit_vip_menu(message):
@@ -604,7 +604,7 @@ def process_edit_vip_duration(message):
     if user_id in reseller_temp_data: del reseller_temp_data[user_id]
 
 # ==========================================================
-# 🗑 Delete VIP (Emoji စာသားမှန်ကန်အောင် ပြင်ဆင်ထားမှု)
+# 🗑 Delete VIP (Type Error Fixed)
 # ==========================================================
 @bot.message_handler(func=lambda msg: msg.text == "🗑 Delete VIP")
 def admin_reseller_delete_vip_menu(message):
