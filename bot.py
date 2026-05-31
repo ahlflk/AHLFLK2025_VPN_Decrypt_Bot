@@ -216,7 +216,6 @@ def pull_data_from_github():
     headers = {"Accept": "application/vnd.github.v3+json"}
     if GITHUB_TOKEN: headers["Authorization"] = f"token {GITHUB_TOKEN}"
     
-    # Sync VIP Keys
     try:
         url_keys = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FILE_PATH}"
         res_k = requests.get(url_keys, headers=headers)
@@ -241,7 +240,6 @@ def pull_data_from_github():
             conn.close()
     except Exception as e: print(f"[-] Pull Keys Error: {str(e)}")
 
-    # Sync Resellers
     try:
         url_resellers = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{RESELLER_FILE_PATH}"
         res_r = requests.get(url_resellers, headers=headers)
@@ -304,13 +302,20 @@ def sync_resellers_to_github():
     except Exception as e: print(f"[-] Reseller Sync Error: {str(e)}")
 
 # --- VIP Logic Checks ---
-def is_admin(user_id): return user_id == ADMIN_ID
+def is_admin(user_id): 
+    if user_id == ADMIN_ID: return True
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT role FROM users WHERE tg_id = ? AND role = 'admin'", (user_id,))
+    res = cursor.fetchone()
+    conn.close()
+    return res is not None
 
 def is_reseller(user_id):
     if user_id == ADMIN_ID: return True
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT role FROM users WHERE tg_id = ? AND role = 'reseller'", (user_id,))
+    cursor.execute("SELECT role FROM users WHERE tg_id = ? AND (role = 'reseller' OR role = 'admin')", (user_id,))
     res = cursor.fetchone()
     conn.close()
     return res is not None
@@ -462,14 +467,14 @@ def cmd_add_vip(message):
             bot.reply_to(message, "❌ ယနေ့အတွက် သင့်ရဲ့ VIP ထည့်သွင်းခွင့် Limit ပြည့်သွားပါပြီ။")
             return
     user_states[user_id] = 'w_vip'
-    bot.reply_to(message, "✍️ VIP ဖြစ်စေချင်သူ၏ အချက်အလက်ကို အောက်ပါအတိုင်း ပို့ပေးပါ-\n\n`TelegramID | VIP_Name | Unit | Duration`\n\n💡 ဥပမာ- `5376544115 | AHLFLK2025 | 30 | d` (d = ရက်၊ m = လ)", parse_mode="Markdown")
+    bot.reply_to(message, "✍️ VIP ဖြစ်စေချင်သူ၏ အချက်အလက်ကို အောက်ပါအတိုင်း ပို့ပေးပါ-\n\n`TelegramID | VIP_Name | Unit | Duration`\n\n💡 ဥပမာ- `0123456789 | AHLFLK2025 | 30 | d` (d = ရက်၊ m = လ)", parse_mode="Markdown")
 
 @bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_vip' and msg.text not in MENU_BUTTONS)
 def process_vip_add(message):
     user_id = message.from_user.id
     parts = [p.strip() for p in message.text.split("|")]
     if len(parts) != 4 or not parts[0].isdigit():
-        return bot.reply_to(message, "❌ ပုံစံမှားနေပါသည်။ `TelegramID | VIP_Name | Unit | Duration` အတိုင်း သေჩာပြန်ပို့ပေးပါ။")
+        return bot.reply_to(message, "❌ ပုံစံမှားနေပါသည်။ `TelegramID | VIP_Name | Unit | Duration` အတိုင်း သေချာပြန်ပို့ပေးပါ။")
     
     try:
         conn = sqlite3.connect(DB_FILE)
@@ -495,14 +500,14 @@ def cmd_my_vips(message):
     for r in rows: res += f"• ID: `{r[0]}` -> နာမည်: `{r[1]}` (ရက်စွဲ: `{r[2]}`)\n"
     bot.reply_to(message, res, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: msg.text == "✏️ Edit VIP")
+@bot.message_handler(func=lambda msg: msg.text == "✏️ Edit VIP" and is_reseller(msg.from_user.id))
 def admin_reseller_edit_vip_menu(message):
     pull_data_from_github()
     user_id = message.from_user.id
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
-    if is_admin(user_id) or user_id == ADMIN_ID:
+    if is_admin(user_id):
         cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys")
     else:
         cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys WHERE added_by = ?", (user_id,))
@@ -530,7 +535,7 @@ def process_edit_vip_id(message):
         
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    if is_admin(user_id) or user_id == ADMIN_ID:
+    if is_admin(user_id):
         cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (int(target_id_str),))
     else:
         cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ? AND added_by = ?", (int(target_id_str), user_id))
@@ -566,20 +571,20 @@ def process_edit_vip_duration(message):
     conn.commit()
     conn.close()
     
-    sync_db_to_github()  # နာမည်မှားအား ပြင်ဆင်ပြီး
+    sync_db_to_github()
     bot.reply_to(message, f"✅ VIP User: **{temp['name']}** (ID: `{temp['target_id']}`) အား သက်တမ်း ` {unit_val} {dur_type} ` သို့ အောင်မြင်စွာ ပြင်ဆင်ပြီးပါပြီ။", parse_mode="Markdown")
     
     user_states[user_id] = None
     if user_id in reseller_temp_data: del reseller_temp_data[user_id]
 
-@bot.message_handler(func=lambda msg: msg.text == "🗑 Delete VIP")
+@bot.message_handler(func=lambda msg: msg.text == "🗑 Delete VIP" and is_reseller(msg.from_user.id))
 def admin_reseller_delete_vip_menu(message):
     pull_data_from_github()
     user_id = message.from_user.id
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
-    if is_admin(user_id) or user_id == ADMIN_ID:
+    if is_admin(user_id):
         cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys")
     else:
         cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys WHERE added_by = ?", (user_id,))
@@ -609,7 +614,7 @@ def process_delete_vip_by_id(message):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
-    if is_admin(user_id) or user_id == ADMIN_ID:
+    if is_admin(user_id):
         cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (int(id_to_del),))
     else:
         cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ? AND added_by = ?", (int(id_to_del), user_id))
@@ -623,7 +628,7 @@ def process_delete_vip_by_id(message):
     conn.commit()
     conn.close()
     
-    sync_db_to_github()  # နာမည်မှားအား ပြင်ဆင်ပြီး
+    sync_db_to_github()
     bot.reply_to(message, f"✅ VIP User: **{row[0]}** (ID: `{id_to_del}`) အား အောင်မြင်စွာ ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode="Markdown")
     user_states[user_id] = None
 
@@ -633,7 +638,7 @@ def admin_create_reseller(message):
     user_states[message.from_user.id] = 'w_r_id'
     bot.reply_to(message, "👤 Reseller ရဲ့ **Telegram User ID** ကို ပို့ပေးပါ-")
 
-@bot.message_handler(func=lambda msg: user_states.get(message.from_user.id) == 'w_r_id' and msg.text not in MENU_BUTTONS)
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_id' and msg.text not in MENU_BUTTONS)
 def process_r_id(message):
     admin_id = message.from_user.id
     try:
@@ -645,7 +650,7 @@ def process_r_id(message):
         bot.reply_to(message, "❌ ID မှားယွင်းနေပါသည်။")
         user_states[admin_id] = None
 
-@bot.message_handler(func=lambda msg: user_states.get(message.from_user.id) == 'w_r_name' and msg.text not in MENU_BUTTONS)
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_name' and msg.text not in MENU_BUTTONS)
 def process_r_name(message):
     admin_id = message.from_user.id
     if admin_id not in reseller_temp_data:
@@ -655,7 +660,7 @@ def process_r_name(message):
     user_states[admin_id] = 'w_r_limit'
     bot.reply_to(message, "📊 တစ်ရက်လျှင် Add ခွင့်ပြုမည့် **VIP အရေအတွက် (Limit)** ကို ပို့ပေးပါ-")
 
-@bot.message_handler(func=lambda msg: user_states.get(message.from_user.id) == 'w_r_limit' and msg.text not in MENU_BUTTONS)
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_limit' and msg.text not in MENU_BUTTONS)
 def process_r_limit(message):
     admin_id = message.from_user.id
     if admin_id not in reseller_temp_data:
@@ -679,10 +684,8 @@ def process_r_limit(message):
     user_states[admin_id] = None
     if admin_id in reseller_temp_data: del reseller_temp_data[admin_id]
 
-@bot.message_handler(func=lambda msg: msg.text == "📊 Reseller List")
+@bot.message_handler(func=lambda msg: msg.text == "📊 Reseller List" and is_admin(msg.from_user.id))
 def admin_view_resellers(message):
-    if not (is_admin(message.from_user.id) or message.from_user.id == ADMIN_ID): 
-        return
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -696,7 +699,7 @@ def admin_view_resellers(message):
         res += f"• {r[1]} (ID: `{r[0]}`) - Limit: `{r[2]} ခု/ရက်`\n"
     bot.reply_to(message, res, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: msg.text == "🗑 Delete Reseller" and (is_admin(msg.from_user.id) or msg.from_user.id == ADMIN_ID))
+@bot.message_handler(func=lambda msg: msg.text == "🗑 Delete Reseller" and is_admin(msg.from_user.id))
 def admin_delete_reseller_menu(message):
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
@@ -706,7 +709,7 @@ def admin_delete_reseller_menu(message):
     conn.close()
     
     if not rows: 
-        return bot.reply_to(message, "📭 ဖျက်ရန် Reseller မရှိပါ။")
+        return bot.reply_to(message, "📭 ဖျက်ရန် Reseller မရှိသေးပါ။")
         
     res_list = "👥 **လက်ရှိ Reseller စာရင်းများ:**\n\n"
     for r in rows:
