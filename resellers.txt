@@ -1,2 +1,1 @@
-5376544115 | Admin_AHLFLK | 9999999
-123456789 | Test_Reseller | 5
+5376544115 | Main_Admin | 999999

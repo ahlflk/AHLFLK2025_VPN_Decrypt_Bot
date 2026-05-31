@@ -211,7 +211,7 @@ def init_db():
         role TEXT,
         daily_limit INTEGER DEFAULT 5
     )''')
-    cursor.execute("INSERT OR IGNORE INTO users (tg_id, username, role, daily_limit) VALUES (?, ?, ?, ?)", (ADMIN_ID, 'Main_Admin', 'admin', 9999999))
+    cursor.execute("INSERT OR IGNORE INTO users (tg_id, username, role, daily_limit) VALUES (?, ?, ?, ?)", (ADMIN_ID, 'Main_Admin', 'admin', 999999))
     conn.commit()
     conn.close()
 
@@ -305,22 +305,19 @@ def sync_resellers_to_github():
     except Exception as e: print(f"[-] Reseller Sync Error: {str(e)}")
 
 def is_admin(user_id): 
-    if int(user_id) == int(ADMIN_ID): return True
+    if user_id == ADMIN_ID: return True
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT role FROM users WHERE tg_id = ? AND role = 'admin'", (int(user_id),))
+    cursor.execute("SELECT role FROM users WHERE tg_id = ? AND role = 'admin'", (user_id,))
     res = cursor.fetchone()
     conn.close()
     return res is not None
 
-# ==========================================================
-# 🛠 is_reseller ID Type Match Fix
-# ==========================================================
 def is_reseller(user_id):
-    if int(user_id) == int(ADMIN_ID): return True
+    if user_id == ADMIN_ID: return True
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT role FROM users WHERE tg_id = ? AND (role = 'reseller' OR role = 'admin')", (int(user_id),))
+    cursor.execute("SELECT role FROM users WHERE tg_id = ? AND (role = 'reseller' OR role = 'admin')", (user_id,))
     res = cursor.fetchone()
     conn.close()
     return res is not None
@@ -349,10 +346,10 @@ def check_vip_status(user_id):
     except: return False, "Error Check"
 
 def get_reseller_daily_limit(user_id):
-    if int(user_id) == int(ADMIN_ID): return 9999999
+    if user_id == ADMIN_ID: return 999999
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT daily_limit FROM users WHERE tg_id = ?", (int(user_id),))
+    cursor.execute("SELECT daily_limit FROM users WHERE tg_id = ?", (user_id,))
     res = cursor.fetchone()
     conn.close()
     return res[0] if res else DEFAULT_LIMIT
@@ -360,7 +357,7 @@ def get_reseller_daily_limit(user_id):
 def get_today_added_count(user_id):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM auth_keys WHERE added_by = ? AND created_at = ?", (int(user_id), datetime.now().strftime("%Y-%m-%d")))
+    cursor.execute("SELECT COUNT(*) FROM auth_keys WHERE added_by = ? AND created_at = ?", (user_id, datetime.now().strftime("%Y-%m-%d")))
     count = cursor.fetchone()[0]
     conn.close()
     return count
@@ -515,7 +512,7 @@ def cmd_my_vips(message):
     bot.reply_to(message, res, parse_mode="Markdown")
 
 # ==========================================================
-# ✏️ Edit VIP (Fixed Complete)
+# ✏️ Edit VIP (Type Error Fixed)
 # ==========================================================
 @bot.message_handler(func=lambda msg: msg.text == "✏️ Edit VIP")
 def admin_reseller_edit_vip_menu(message):
@@ -607,7 +604,7 @@ def process_edit_vip_duration(message):
     if user_id in reseller_temp_data: del reseller_temp_data[user_id]
 
 # ==========================================================
-# 🗑 Delete VIP (Fixed Complete)
+# 🗑 Delete VIP (Type Error Fixed)
 # ==========================================================
 @bot.message_handler(func=lambda msg: msg.text == "🗑 Delete VIP")
 def admin_reseller_delete_vip_menu(message):
