@@ -619,12 +619,31 @@ def admin_view_resellers(message):
     for r in rows: res += f"• {r[1]} (ID: `{r[0]}`) - Limit: `{r[2]} ခု/ရက်`\n"
     bot.reply_to(message, res, parse_mode="Markdown")
 
+@bot.message_handler(func=lambda msg: msg.text == "📊 Reseller List")
+def admin_view_resellers(message):
+    if not (is_admin(message.from_user.id) or message.from_user.id == ADMIN_ID): 
+        return
+    pull_data_from_github()
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    # ADMIN_ID မဟုတ်သော တကယ့် Reseller စစ်စစ်များကိုသာ စာရင်းထုတ်ယူရန် စစ်ဆေးခြင်း
+    cursor.execute("SELECT tg_id, username, daily_limit FROM users WHERE role='reseller' AND tg_id != ?", (ADMIN_ID,))
+    rows = cursor.fetchall()
+    conn.close()
+    if not rows: 
+        return bot.reply_to(message, "📭 Reseller စာရင်း လုံးဝမရှိသေးပါ။")
+    res = "👥 **Reseller စာရင်းစုစုပေါင်း:**\n\n"
+    for r in rows: 
+        res += f"• {r[1]} (ID: `{r[0]}`) - Limit: `{r[2]} ခု/ရက်`\n"
+    bot.reply_to(message, res, parse_mode="Markdown")
+
 @bot.message_handler(func=lambda msg: msg.text == "🗑 Delete Reseller" and (is_admin(msg.from_user.id) or msg.from_user.id == ADMIN_ID))
 def admin_delete_reseller_menu(message):
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT tg_id, username FROM users WHERE role = 'reseller'")
+    # ဖျက်ထုတ်မည့်စာရင်းတွင် Admin မိမိကိုယ်တိုင် မပါဝင်စေရန် ခြွင်းချက်ထားခြင်း
+    cursor.execute("SELECT tg_id, username FROM users WHERE role = 'reseller' AND tg_id != ?", (ADMIN_ID,))
     rows = cursor.fetchall()
     conn.close()
     if not rows: 
@@ -632,11 +651,12 @@ def admin_delete_reseller_menu(message):
     markup = types.InlineKeyboardMarkup()
     for r in rows: 
         markup.add(types.InlineKeyboardButton(text=f"❌ {r[1]}", callback_data=f"del_reseller_{r[0]}"))
-    bot.send_message(message.chat.id, "🗑 **%s**" % "ဖျက်ထုတ်လိုသော Reseller အား နှိပ်ပါ-", reply_markup=markup, parse_mode="Markdown")
+    bot.send_message(message.chat.id, "🗑 **ဖျက်ထုတ်လိုသော Reseller အား နှိပ်ပါ-**", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("del_reseller_"))
 def callback_delete_reseller(call):
-    if not is_admin(call.from_user.id): return
+    if not (is_admin(call.from_user.id) or call.from_user.id == ADMIN_ID): 
+        return
     reseller_id = int(call.data.replace("del_reseller_", ""))
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
