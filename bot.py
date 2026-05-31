@@ -260,8 +260,13 @@ def pull_data_from_github():
                 if " | " in line:
                     parts = [p.strip() for p in line.split("|")]
                     if parts[0].isdigit():
+                        tg_id_val = int(parts[0])
                         r_limit = int(parts[2]) if len(parts) == 3 and parts[2].isdigit() else DEFAULT_LIMIT
-                        cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, daily_limit) VALUES (?, ?, 'reseller', ?)", (int(parts[0]), parts[1], r_limit))
+                        
+                        # အကယ်၍ Admin ID ဖြစ်နေရင် ရာထူးကို admin ဟုပဲ ထားရှိရန်
+                        role_val = 'admin' if tg_id_val == ADMIN_ID else 'reseller'
+                        
+                        cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, daily_limit) VALUES (?, ?, ?, ?)", (tg_id_val, parts[1], role_val, r_limit))
             conn.commit()
             conn.close()
     except Exception as e: print(f"[-] Pull Resellers Error: {str(e)}")
@@ -614,7 +619,7 @@ def admin_view_resellers(message):
     for r in rows: res += f"• {r[1]} (ID: `{r[0]}`) - Limit: `{r[2]} ခု/ရက်`\n"
     bot.reply_to(message, res, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: msg.text == "🗑 Delete Reseller" and is_admin(message.from_user.id))
+@bot.message_handler(func=lambda msg: msg.text == "🗑 Delete Reseller" and (is_admin(msg.from_user.id) or msg.from_user.id == ADMIN_ID))
 def admin_delete_reseller_menu(message):
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
@@ -622,10 +627,12 @@ def admin_delete_reseller_menu(message):
     cursor.execute("SELECT tg_id, username FROM users WHERE role = 'reseller'")
     rows = cursor.fetchall()
     conn.close()
-    if not rows: return bot.reply_to(message, "📭 ဖျက်ရန် Reseller မရှိပါ။")
+    if not rows: 
+        return bot.reply_to(message, "📭 ဖျက်ရန် Reseller မရှိပါ။")
     markup = types.InlineKeyboardMarkup()
-    for r in rows: markup.add(types.InlineKeyboardButton(text=f"❌ {r[1]}", callback_data=f"del_reseller_{r[0]}"))
-    bot.send_message(message.chat.id, "🗑 **ဖျက်ထုတ်လိုသော Reseller အား နှိပ်ပါ-**", reply_markup=markup)
+    for r in rows: 
+        markup.add(types.InlineKeyboardButton(text=f"❌ {r[1]}", callback_data=f"del_reseller_{r[0]}"))
+    bot.send_message(message.chat.id, "🗑 **%s**" % "ဖျက်ထုတ်လိုသော Reseller အား နှိပ်ပါ-", reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("del_reseller_"))
 def callback_delete_reseller(call):
