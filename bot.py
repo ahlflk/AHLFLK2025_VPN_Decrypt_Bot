@@ -171,6 +171,7 @@ def process_json_structure(data, method):
         return data
     return data
 
+# ပြင်ဆင်ချက် - Config URL 403 Forbidden Error မတက်စေရန် Fake User-Agent အပြည့်အစုံထည့်သွင်းခြင်း
 def perform_decryption(config_url, outer_key, outer_delta_raw, method):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -180,7 +181,7 @@ def perform_decryption(config_url, outer_key, outer_delta_raw, method):
         enc_base64 = response.read().decode('utf-8').replace('\n', '').replace('\r', '').strip()
         
     outer_delta = parse_delta(outer_delta_raw)
-    enc_data = base64.b64decode(enc_base64)
+    enc_data = base64.b64decode(enc_data_raw if 'enc_data_raw' in locals() else enc_base64)
     dec_bytes = decrypt_xxtea(enc_data, outer_key.encode('utf-8'), outer_delta)
     raw_json_str = dec_bytes.decode('utf-8', errors='ignore').replace('\\/', '/')
     json_obj = json.loads(raw_json_str)
@@ -211,7 +212,7 @@ def init_db():
         role TEXT,
         daily_limit INTEGER DEFAULT 5
     )''')
-    cursor.execute("INSERT OR IGNORE INTO users (tg_id, username, role, daily_limit) VALUES (?, ?, ?, ?)", (ADMIN_ID, 'Main_Admin', 'admin', 999999))
+    cursor.execute("INSERT OR IGNORE INTO users (tg_id, username, role, daily_limit) VALUES (?, ?, ?, ?)", (ADMIN_ID, 'Main_Admin', 'admin', 9999999))
     conn.commit()
     conn.close()
 
@@ -304,6 +305,7 @@ def sync_resellers_to_github():
         requests.put(url, headers=headers, json=payload)
     except Exception as e: print(f"[-] Reseller Sync Error: {str(e)}")
 
+# --- VIP Logic Checks ---
 def is_admin(user_id): 
     if user_id == ADMIN_ID: return True
     conn = sqlite3.connect(DB_FILE)
@@ -346,7 +348,7 @@ def check_vip_status(user_id):
     except: return False, "Error Check"
 
 def get_reseller_daily_limit(user_id):
-    if user_id == ADMIN_ID: return 999999
+    if user_id == ADMIN_ID: return 9999999
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("SELECT daily_limit FROM users WHERE tg_id = ?", (user_id,))
@@ -393,12 +395,14 @@ def display_decrypt_list(message_or_call, user_id, chat_id):
     configs = get_vpn_configs()
     welcome_text = f"👋 **Safe Decryptor & VIP Center မှ ကြိုဆိုပါတယ်!**\n\n⌛ **သင့် VIP သက်တမ်းကုန်မည့်ရက်:** `{exp_status}`\n\nDecrypt လုပ်ချင်တဲ့ VPN Config အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ -"
     
+    # ပြင်ဆင်ချက် - Row Width အား 2 သို့ ပြောင်းလဲခြင်း
     markup = types.InlineKeyboardMarkup(row_width=2)
     buttons = []
     for index, vpn in enumerate(configs, start=1):
         btn = types.InlineKeyboardButton(f"[{index}] {vpn['name']}", callback_data=f"dec_{vpn['id']}")
         buttons.append(btn)
     
+    # ပြင်ဆင်ချက် - ၂ ခုစီ ဘေးချင်းကပ် စီတန်းပေးခြင်း
     for i in range(0, len(buttons), 2):
         markup.row(*buttons[i:i+2])
         
@@ -455,9 +459,9 @@ def handle_decrypt_callback(call):
         if os.path.exists(temp_file_path): os.remove(temp_file_path)
     except Exception as e:
         try:
-            bot.delete_message(chat_id, status_msg.message_id)
-        except: pass
-        bot.send_message(chat_id, f"❌ **Error:** `{str(e)}`", parse_mode="Markdown")
+            bot.edit_message_text(f"❌ **Error:** `{str(e)}`", chat_id, status_msg.message_id, parse_mode="Markdown")
+        except:
+            bot.send_message(chat_id, f"❌ **Error:** `{str(e)}`", parse_mode="Markdown")
 
 # ----------------- VIP MANAGEMENT SYSTEMS -----------------
 @bot.message_handler(func=lambda msg: msg.text == "➕ Add VIP User")
@@ -472,16 +476,10 @@ def cmd_add_vip(message):
     user_states[user_id] = 'w_vip'
     bot.reply_to(message, "✍️ VIP ဖြစ်စေချင်သူ၏ အချက်အလက်ကို အောက်ပါအတိုင်း ပို့ပေးပါ-\n\n`TelegramID | VIP_Name | Unit | Duration`\n\n💡 ဥပမာ- `0123456789 | AHLFLK2025 | 30 | d` (d = ရက်၊ m = လ)", parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_vip')
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_vip' and msg.text not in MENU_BUTTONS)
 def process_vip_add(message):
     user_id = message.from_user.id
-    text_input = message.text.strip()
-    
-    if text_input in MENU_BUTTONS:
-        user_states[user_id] = None
-        return
-
-    parts = [p.strip() for p in text_input.split("|")]
+    parts = [p.strip() for p in message.text.split("|")]
     if len(parts) != 4 or not parts[0].isdigit():
         return bot.reply_to(message, "❌ ပုံစံမှားနေပါသည်။ `TelegramID | VIP_Name | Unit | Duration` အတိုင်း သေချာပြန်ပို့ပေးပါ။")
     
@@ -498,12 +496,11 @@ def process_vip_add(message):
 
 @bot.message_handler(func=lambda msg: msg.text == "🔑 My VIP Users")
 def cmd_my_vips(message):
-    user_id = message.from_user.id
-    if not is_reseller(user_id): return
+    if not is_reseller(message.from_user.id): return
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT target_id, key_string, created_at FROM auth_keys WHERE added_by = ?", (user_id,))
+    cursor.execute("SELECT target_id, key_string, created_at FROM auth_keys WHERE added_by = ?", (message.from_user.id,))
     rows = cursor.fetchall()
     conn.close()
     if not rows: return bot.reply_to(message, "📭 သင်ထည့်သွင်းထားသော VIP အကောင့်မရှိသေးပါ။")
@@ -511,9 +508,7 @@ def cmd_my_vips(message):
     for r in rows: res += f"• ID: `{r[0]}` -> နာမည်: `{r[1]}` (ရက်စွဲ: `{r[2]}`)\n"
     bot.reply_to(message, res, parse_mode="Markdown")
 
-# ==========================================================
-# ✏️ Edit VIP (Type Error Fixed)
-# ==========================================================
+# ပြင်ဆင်ချက် - Filter ချို့ယွင်းချက်ပြင်ဆင်ပြီး Reply တက်လာစေရန် လုပ်ဆောင်ခြင်း
 @bot.message_handler(func=lambda msg: msg.text == "✏️ Edit VIP")
 def admin_reseller_edit_vip_menu(message):
     user_id = message.from_user.id
@@ -538,56 +533,45 @@ def admin_reseller_edit_vip_menu(message):
         
     res_list += "\n✍️ **သက်တမ်းပြင်ဆင်လိုသော VIP အသုံးပြုသူ၏ Telegram ID ကို အောက်တွင် ရိုက်ပို့ပေးပါ-**"
     user_states[user_id] = 'w_edit_vip_id'
-    bot.reply_to(message, res_list, parse_mode="Markdown")
+    bot.send_message(message.chat.id, res_list, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_vip_id')
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_vip_id' and msg.text not in MENU_BUTTONS)
 def process_edit_vip_id(message):
     user_id = message.from_user.id
     target_id_str = message.text.strip()
     
-    if target_id_str in MENU_BUTTONS:
-        user_states[user_id] = None
-        return
-        
     if not target_id_str.isdigit():
         return bot.reply_to(message, "❌ မှားယွင်းနေပါသည်။ Telegram ID (ဂဏန်းသီးသန့်) ကိုသာ ရိုက်ပို့ပေးပါဗျာ။")
         
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     if is_admin(user_id):
-        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (target_id_str,))
+        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (int(target_id_str),))
     else:
-        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ? AND added_by = ?", (target_id_str, user_id))
+        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ? AND added_by = ?", (int(target_id_str), user_id))
     row = cursor.fetchone()
     conn.close()
     
     if not row:
         return bot.reply_to(message, "❌ ဤ Telegram ID ဖြင့် VIP အား ရှာမတွေ့ပါ။ (သို့မဟုတ်) သင်ပြင်ဆင်ခွင့်မရှိပါ။")
         
-    reseller_temp_data[user_id] = {'target_id': target_id_str, 'name': row[0]}
+    reseller_temp_data[user_id] = {'target_id': int(target_id_str), 'name': row[0]}
     user_states[user_id] = 'w_edit_vip_duration'
     bot.reply_to(message, f"👤 အကောင့်: **{row[0]}**\n\n✍️ တိုးမြှင့်လိုသော သက်တမ်းအား `Unit | Duration` ပုံစံဖြင့် ရိုက်ပို့ပေးပါ-\n(ဥပမာ- `30 | d` သို့မဟုတ် `1 | m`)")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_vip_duration')
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_vip_duration' and msg.text not in MENU_BUTTONS)
 def process_edit_vip_duration(message):
     user_id = message.from_user.id
-    text_input = message.text.strip()
-    
-    if text_input in MENU_BUTTONS:
-        user_states[user_id] = None
-        if user_id in reseller_temp_data: del reseller_temp_data[user_id]
-        return
-
     temp = reseller_temp_data.get(user_id)
     if not temp:
         user_states[user_id] = None
         return bot.reply_to(message, "❌ Error ဖြစ်သွားပါသည်။ ခလုတ်ကို ပြန်နှိပ်ပြီး အစမှ ပြန်လုပ်ပေးပါ။")
         
-    parts = [p.strip() for p in text_input.split("|")]
+    parts = [p.strip() for p in message.text.split("|")]
     if len(parts) != 2 or not parts[0].isdigit() or parts[1].lower() not in ['d', 'm']:
         return bot.reply_to(message, "❌ Format မှားယွင်းနေပါသည်။ ဥပမာ- `30 | d` ဟု သေချာစွာ ပြန်ရိုက်ပို့ပေးပါဗျာ။")
         
-    unit_val = parts[0]
+    unit_val = int(parts[0])
     dur_type = parts[1].lower()
     
     pull_data_from_github()
@@ -603,9 +587,7 @@ def process_edit_vip_duration(message):
     user_states[user_id] = None
     if user_id in reseller_temp_data: del reseller_temp_data[user_id]
 
-# ==========================================================
-# 🗑 Delete VIP (Type Error Fixed)
-# ==========================================================
+# ပြင်ဆင်ချက် - Filter ချို့ယွင်းချက်ပြင်ဆင်ပြီး Reply တက်လာစေရန် လုပ်ဆောင်ခြင်း
 @bot.message_handler(func=lambda msg: msg.text == "🗑 Delete VIP")
 def admin_reseller_delete_vip_menu(message):
     user_id = message.from_user.id
@@ -630,17 +612,13 @@ def admin_reseller_delete_vip_menu(message):
         
     res_list += "\n✍️ **ဖျက်ထုတ်လိုသော VIP အသုံးပြုသူ၏ Telegram ID ကို အောက်တွင် ရိုက်ပို့ပေးပါ-**"
     user_states[user_id] = 'w_del_vip'
-    bot.reply_to(message, res_list, parse_mode="Markdown")
+    bot.send_message(message.chat.id, res_list, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_del_vip')
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_del_vip' and msg.text not in MENU_BUTTONS)
 def process_delete_vip_by_id(message):
     user_id = message.from_user.id
     id_to_del = message.text.strip()
     
-    if id_to_del in MENU_BUTTONS:
-        user_states[user_id] = None
-        return
-        
     if not id_to_del.isdigit():
         return bot.reply_to(message, "❌ မှားယွင်းနေပါသည်။ Telegram ID (ဂဏန်းသီးသန့်) ကိုသာ ရိုက်ပို့ပေးပါဗျာ။")
         
@@ -649,16 +627,16 @@ def process_delete_vip_by_id(message):
     cursor = conn.cursor()
     
     if is_admin(user_id):
-        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (id_to_del,))
+        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (int(id_to_del),))
     else:
-        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ? AND added_by = ?", (id_to_del, user_id))
+        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ? AND added_by = ?", (int(id_to_del), user_id))
     row = cursor.fetchone()
     
     if not row:
         conn.close()
         return bot.reply_to(message, "❌ ဤ Telegram ID ဖြင့် VIP အား ရှာမတွေ့ပါ။ (သို့မဟုတ်) သင်ဖျက်ခွင့်မရှိသော အကောင့်ဖြစ်နိုင်ပါသည်။")
         
-    cursor.execute("DELETE FROM auth_keys WHERE target_id = ?", (id_to_del,))
+    cursor.execute("DELETE FROM auth_keys WHERE target_id = ?", (int(id_to_del),))
     conn.commit()
     conn.close()
     
@@ -669,20 +647,15 @@ def process_delete_vip_by_id(message):
 # ----------------- ADMIN COMMANDS (RESELLERS) -----------------
 @bot.message_handler(func=lambda msg: msg.text == "👤 Create Reseller")
 def admin_create_reseller(message):
-    user_id = message.from_user.id
-    if not is_admin(user_id): return
-    user_states[user_id] = 'w_r_id'
+    if not is_admin(message.from_user.id): return
+    user_states[message.from_user.id] = 'w_r_id'
     bot.reply_to(message, "👤 Reseller ရဲ့ **Telegram User ID** ကို ပို့ပေးပါ-")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_id')
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_id' and msg.text not in MENU_BUTTONS)
 def process_r_id(message):
     admin_id = message.from_user.id
-    text_input = message.text.strip()
-    if text_input in MENU_BUTTONS:
-        user_states[admin_id] = None
-        return
     try:
-        reseller_id = int(text_input)
+        reseller_id = int(message.text.strip())
         reseller_temp_data[admin_id] = {'id': reseller_id}
         user_states[admin_id] = 'w_r_name'
         bot.reply_to(message, "✍️ သတ်မှတ်မည့် **Reseller နာမည်** ပို့ပေးပါ-")
@@ -690,34 +663,24 @@ def process_r_id(message):
         bot.reply_to(message, "❌ ID မှားယွင်းနေပါသည်။")
         user_states[admin_id] = None
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_name')
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_name' and msg.text not in MENU_BUTTONS)
 def process_r_name(message):
     admin_id = message.from_user.id
-    text_input = message.text.strip()
-    if text_input in MENU_BUTTONS:
-        user_states[admin_id] = None
-        if admin_id in reseller_temp_data: del reseller_temp_data[admin_id]
-        return
     if admin_id not in reseller_temp_data:
         user_states[admin_id] = None
         return
-    reseller_temp_data[admin_id]['name'] = text_input
+    reseller_temp_data[admin_id]['name'] = message.text.strip()
     user_states[admin_id] = 'w_r_limit'
     bot.reply_to(message, "📊 တစ်ရက်လျှင် Add ခွင့်ပြုမည့် **VIP အရေအတွက် (Limit)** ကို ပို့ပေးပါ-")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_limit')
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_limit' and msg.text not in MENU_BUTTONS)
 def process_r_limit(message):
     admin_id = message.from_user.id
-    text_input = message.text.strip()
-    if text_input in MENU_BUTTONS:
-        user_states[admin_id] = None
-        if admin_id in reseller_temp_data: del reseller_temp_data[admin_id]
-        return
     if admin_id not in reseller_temp_data:
         user_states[admin_id] = None
         return
     try:
-        r_limit = int(text_input)
+        r_limit = int(message.text.strip())
         r_id = reseller_temp_data[admin_id]['id']
         r_name = reseller_temp_data[admin_id]['name']
         
@@ -746,6 +709,7 @@ def admin_view_resellers(message):
     if not rows: 
         return bot.reply_to(message, "📭 Reseller စာရင်း လုံးဝမရှိသေးပါ။")
     res = "👥 **Reseller စာရင်းစုစုပေါင်း:**\n\n"
+    # ပြင်ဆင်ချက် - ID အား ရှေ့ဆုံးမှ ပြသပေးရန် ပြောင်းလဲခြင်း
     for r in rows: 
         res += f"🆔 `{r[0]}` | 👤 **{r[1]}** (Limit: `{r[2]} ခု/ရက်`)\n"
     bot.reply_to(message, res, parse_mode="Markdown")
@@ -769,17 +733,13 @@ def admin_delete_reseller_menu(message):
     
     res_list += "\n✍️ **ဖျက်ထုတ်လိုသော Reseller ၏ Telegram ID ကို အောက်တွင် ရိုက်ပို့ပေးပါ-**"
     user_states[message.from_user.id] = 'w_del_reseller'
-    bot.reply_to(message, res_list, parse_mode="Markdown")
+    bot.send_message(message.chat.id, res_list, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_del_reseller')
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_del_reseller' and msg.text not in MENU_BUTTONS)
 def process_delete_reseller_by_id(message):
     user_id = message.from_user.id
     id_to_del = message.text.strip()
     
-    if id_to_del in MENU_BUTTONS:
-        user_states[user_id] = None
-        return
-        
     if not id_to_del.isdigit():
         return bot.reply_to(message, "❌ မှားယွင်းနေပါသည်။ Telegram ID (ဂဏန်းသီးသန့်) ကိုသာ ရိုက်ပို့ပေးပါဗျာ။")
         
