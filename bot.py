@@ -1,5 +1,5 @@
 # # All-in-One Safe Decryptor & Telegram VIP Management Bot (1 Day = 1 Token System)
-# Py By @AHLFLK2025 (Optimized with Dynamic Token Deduction & Anti-Loop Interceptor)
+# Py By @AHLFLK2025 (Optimized with Dynamic Token Deduction & One-Line Fast Creation)
 import os
 import re
 import json
@@ -19,7 +19,7 @@ from telebot import types
 # ==========================================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = 5376544115
-DEFAULT_CREDITS = 100  # Reseller အသစ်ဆောက်ရင် ပေးမယ့် အခြေခံ Token
+DEFAULT_CREDITS = 100  
 
 GITHUB_TOKEN = os.getenv("GH_TOKEN") 
 REPO_OWNER = "ahlflk" 
@@ -388,14 +388,12 @@ def get_main_keyboard(user_id):
 # 6. TELEGRAM BOT HANDLERS & EVENTS
 # ==========================================
 
-# 🛡️ ANTI-LOOP INTERCEPTOR (အဓိကပြင်ဆင်ချက်)
-# User က ဘယ် flow ထဲရောက်ရောက် မီနူးခလုတ်တွေကို လာနှိပ်လိုက်ရင် လက်ရှိ လုပ်လက်စ flow (State) အားလုံးကို အရင် ဖျက်သိမ်း (Reset) ပေးမည့်စနစ်
 @bot.message_handler(func=lambda msg: msg.text in MENU_BUTTONS)
 def handle_menu_buttons(message):
     user_id = message.from_user.id
-    user_states[user_id] = None  # လက်ရှိပိတ်မိနေတဲ့ flow အားလုံးကို အတင်းအဓမ္မ Reset ချပေးသည်
+    user_states[user_id] = None  
     if user_id in reseller_temp_data: 
-        del reseller_temp_data[user_id] # ယာယီသိမ်းထားတဲ့ data တွေကိုပါ အကုန်ရှင်းထုတ်သည်
+        del reseller_temp_data[user_id] 
     
     if message.text == "🌐 VPN Decrypt List":
         display_decrypt_list(message, user_id, message.chat.id)
@@ -495,7 +493,16 @@ def cmd_add_vip(message):
     
     current_tokens = get_reseller_tokens(user_id)
     user_states[user_id] = 'w_vip'
-    bot.reply_to(message, f"✍️ VIP အသစ်ဆောက်ရန် ပို့ပေးပါ-\n🪙 နှုန်းထား: `1 Day = 1 Token` (လက်ကျန်: `{current_tokens}` Tokens)\n\n`TelegramID | VIP_Name | Unit | Duration`\n\n💡 ဥပမာ- `0123456789 | AHLFLK2025 | 30 | d` (ရက် ၃၀ အတွက် 30 Tokens နှုတ်ပါမည်)", parse_mode="Markdown")
+    
+    msg_text = (
+        f"✍️ **VIP အသစ်ဆောက်ရန် ပုံစံတကျ စာသားပေးပို့ပါ-**\n"
+        f"🪙 နှုန်းထား: `1 Day = 1 Token` (လက်ကျန်: `{current_tokens}` Tokens)\n\n"
+        f"Format အတိုင်း အောက်ပါစာသားကို ကူးယူပြင်ဆင်ပြီး ပို့နိုင်ပါသည် -\n"
+        f"`TelegramID | VIP_Name | Unit | Duration`\n\n"
+        f"👇 **နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူရန် နမူနာ-**\n"
+        f"`0123456789 | AHLFLK2025 | 30 | d`"
+    )
+    bot.reply_to(message, msg_text, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_vip')
 def process_vip_add(message):
@@ -535,7 +542,7 @@ def cmd_my_vips(message):
     rows = cursor.fetchall()
     conn.close()
     if not rows: return bot.reply_to(message, "📭 သင်ထည့်သွင်းထားသော VIP အကောင့်မရှိသေးပါ။")
-    res = "👥 **သင်ထည့်ထားသော VIP အသုံးပြုသူများ:**\n\n"
+    res = "👥 **...သင်ထည့်ထားသော VIP အသုံးပြုသူများ...**\n\n"
     for r in rows: res += f"• ID: `{r[0]}` -> နာမည်: `{r[1]}` (သက်တမ်း: `{r[2]} {r[3]}`)\n"
     bot.reply_to(message, res, parse_mode="Markdown")
 
@@ -567,7 +574,7 @@ def admin_reseller_edit_vip_menu(message):
     for r in rows: 
         res_list += f"🆔 `{r[0]}` | 👤 *{r[1]}* ({r[2]}{r[3]})\n"
     res_list += "--------------------------------------\n\n"
-    res_list += "✍️ *သက်တမ်းပြင်ဆင်/တိုးမြှင့်လိုသော VIP ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-*"
+    res_list += "✍ *သက်တမ်းပြင်ဆင်/တိုးမြှင့်လိုသော VIP ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-*"
     
     user_states[user_id] = 'w_edit_vip_id'
     bot.send_message(message.chat.id, res_list, parse_mode="Markdown")
@@ -591,7 +598,15 @@ def process_edit_vip_id(message):
         
     reseller_temp_data[user_id] = {'target_id': int(target_id_str), 'name': row[0]}
     user_states[user_id] = 'w_edit_vip_duration'
-    bot.reply_to(message, f"👤 အကောင့်: **{row[0]}**\n\n✍️ ပြောင်းလဲသတ်မှတ်လိုသော **သက်တမ်းအသစ်** ကို `Unit | Duration` ပုံစံဖြင့် ပို့ပေးပါ-\n(ဥပမာ- `60 | d` ဟု ထည့်ပါက သက်တမ်း ရက် ၆၀ သို့ ပြောင်းသွားပြီး လိုအပ်သော Token ကို ထပ်မံနှုတ်ယူပါမည်။)")
+    
+    edit_msg = (
+        f"👤 အကောင့်: **{row[0]}**\n\n"
+        f"✍️ ပြောင်းလဲသတ်မှတ်လိုသော **သက်တမ်းအသစ်** ကို `Unit | Duration` ပုံစံဖြင့် ပို့ပေးပါ-\n"
+        f"(ထည့်သွင်းလိုက်သော သက်တမ်းရက်အလိုက် Token ထပ်မံနှုတ်ယူပါမည်)\n\n"
+        f"👇 **နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူပြင်ဆင်ရန် နမူနာ-**\n"
+        f"`60 | d`"
+    )
+    bot.reply_to(message, edit_msg, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_vip_duration')
 def process_edit_vip_duration(message):
@@ -676,50 +691,45 @@ def process_delete_vip_by_id(message):
     user_states[user_id] = None
 
 # ----------------- ADMIN COMMANDS (RESELLERS) -----------------
+# Fast One-Line Reseller Creator စနစ်သို့ ပြောင်းလဲပြင်ဆင်ခြင်း
 def admin_create_reseller(message):
     if not is_admin(message.from_user.id): return
-    user_states[message.from_user.id] = 'w_r_id'
-    bot.reply_to(message, "👤 Reseller ရဲ့ **Telegram User ID** ကို ပို့ပေးပါ-")
+    user_states[message.from_user.id] = 'w_one_line_reseller'
+    
+    r_msg = (
+        f"👤 **Reseller အသစ်ဖန်တီးရန် အောက်ပါပုံစံအတိုင်း စာသားပေးပို့ပါ-**\n\n"
+        f"Format လမ်းညွှန် -\n"
+        f"`TelegramID | Reseller_Name | Tokens`\n\n"
+        f"👇 **နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူပြင်ဆင်ရန် နမူနာ-**\n"
+        f"`5376544115 | MgMg_Reseller | 500`"
+    )
+    bot.reply_to(message, r_msg, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_id')
-def process_r_id(message):
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_one_line_reseller')
+def process_one_line_reseller(message):
     admin_id = message.from_user.id
-    try:
-        reseller_id = int(message.text.strip())
-        reseller_temp_data[admin_id] = {'id': reseller_id}
-        user_states[admin_id] = 'w_r_name'
-        bot.reply_to(message, "✍️ သတ်မှတ်မည့် **Reseller နာမည်** ပို့ပေးပါ-")
-    except: 
-        bot.reply_to(message, "❌ ID မှားယွင်းနေပါသည်။")
-        user_states[admin_id] = None
-
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_name')
-def process_r_name(message):
-    admin_id = message.from_user.id
-    if admin_id not in reseller_temp_data: return
-    reseller_temp_data[admin_id]['name'] = message.text.strip()
-    user_states[admin_id] = 'w_r_limit'
-    bot.reply_to(message, "🪙 ထည့်သွင်းပေးမည့် **Token အရေအတွက် (1 Token = 1 Day)** ကို ပို့ပေးပါ-")
-
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_limit')
-def process_r_limit(message):
-    admin_id = message.from_user.id
-    if admin_id not in reseller_temp_data: return
-    try:
-        r_tokens = int(message.text.strip())
-        r_id = reseller_temp_data[admin_id]['id']
-        r_name = reseller_temp_data[admin_id]['name']
+    parts = [p.strip() for p in message.text.split("|")]
+    
+    if len(parts) != 3 or not parts[0].isdigit() or not parts[2].isdigit():
+        return bot.reply_to(message, "❌ ပုံစံမှားယွင်းနေပါသည်။ `TelegramID | Reseller_Name | Tokens` အတိုင်း ပို့ပေးပါ။")
         
+    r_id = int(parts[0])
+    r_name = parts[1]
+    r_tokens = int(parts[2])
+    
+    try:
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, token_balance) VALUES (?, ?, 'reseller', ?)", (r_id, r_name, r_tokens))
         conn.commit()
         conn.close()
-        bot.reply_to(message, f"✅ Reseller: `{r_name}` အား Token `{r_tokens}` ခု (ရက်ပေါင်း {r_tokens} စာ) ဖြင့် ဖန်တီးပြီးပါပြီ။")
+        
+        bot.reply_to(message, f"✅ **Reseller အကောင့်ကို အောင်မြင်စွာ ဖန်တီးပြီးပါပြီ!**\n\n🆔 ID: `{r_id}`\n👤 နာမည်: **{r_name}**\n🪙 ပေးအပ်ထားသော Token: `{r_tokens}` Tokens", parse_mode="Markdown")
         sync_resellers_to_github()
-    except: bot.reply_to(message, "❌ : မှားယွင်းနေပါသည်။")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error: {str(e)}")
+        
     user_states[admin_id] = None
-    if admin_id in reseller_temp_data: del reseller_temp_data[admin_id]
 
 def admin_view_resellers(message):
     if not is_admin(message.from_user.id): return
