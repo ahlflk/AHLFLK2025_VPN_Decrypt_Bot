@@ -766,7 +766,7 @@ def process_delete_reseller_by_id(message):
     conn.commit()
     conn.close()
     sync_resellers_to_github()
-    bot.reply_to(message, f"✅ Reseller: **{row[0]}** ကို ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode=\"Markdown\")
+    bot.reply_to(message, f"✅ Reseller: **{row[0]}** ကို ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode="Markdown")
     user_states[user_id] = None
 
 def admin_view_all_keys(message):
