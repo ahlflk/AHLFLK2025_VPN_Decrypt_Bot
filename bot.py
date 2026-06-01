@@ -388,11 +388,13 @@ def get_main_keyboard(user_id):
 # 6. TELEGRAM BOT HANDLERS & EVENTS
 # ==========================================
 
-# Fixed Interceptor: Only reset state if the incoming message is a main menu button AND the user is NOT inside an active state input flow.
-@bot.message_handler(func=lambda msg: msg.text in MENU_BUTTONS and user_states.get(msg.from_user.id) not in ['w_edit_vip_id', 'w_edit_vip_duration', 'w_del_vip', 'w_vip', 'w_r_id', 'w_r_name', 'w_r_limit', 'w_del_reseller'])
+# FIX: မီနူးခလုတ်တွေကို နှိပ်လိုက်ရင် user_states တွေကို အမြဲတမ်း အရင်ရှင်းထုတ်ပစ်မယ် (ဘယ် State ထဲရောက်နေပါစေ Intercept လုပ်မယ်)
+@bot.message_handler(func=lambda msg: msg.text in MENU_BUTTONS)
 def handle_menu_buttons(message):
     user_id = message.from_user.id
-    user_states[user_id] = None # Safe to reset here
+    user_states[user_id] = None  # State ကို အကုန်လုံး Reset လုပ်ပစ်သည်
+    if user_id in reseller_temp_data: 
+        del reseller_temp_data[user_id]
     
     if message.text == "🌐 VPN Decrypt List":
         display_decrypt_list(message, user_id, message.chat.id)
@@ -763,7 +765,7 @@ def admin_view_all_keys(message):
     conn.close()
     if not rows: return bot.reply_to(message, "📭 VIP အကောင့် မရှိသေးပါ။")
     res = f"🌐 **VIP အသုံးပြုသူ အားလုံးစာရင်း ({len(rows)} ဦး):**\n\n"
-    for r in rows: res += f"🆔 `{r[0]}` | 👤 `{r[1]}` | {r[2]} {r[3]}\n"
+    for r in rows: res += f"🆔 `{r[0]}` | 👤 `{r[1]` | {r[2]} {r[3]}\n"
     bot.reply_to(message, res, parse_mode="Markdown")
 
 # ==========================================
