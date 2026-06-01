@@ -1,5 +1,5 @@
-# # All-in-One Safe Decryptor & Telegram VIP Management Bot (1 Day = 1 Token System)
-# Py By @AHLFLK2025 (Fully Fixed Markdown Parse Error & Safe HTML Mode)
+# All-in-One Safe Decryptor & Telegram VIP Management Bot (1 Day = 1 Token System)
+# Py By @AHLFLK2025 (Fully Fixed Markdown, HTML Safe, and Cross-Duplicate Check)
 import os
 import re
 import json
@@ -44,7 +44,7 @@ MENU_BUTTONS = ["🌐 VPN Decrypt List", "➕ Add VIP User", "🔑 My VIP Users"
 # ==========================================
 @app.route('/')
 def home():
-    return "VIP Bot (HTML Mode Safe System) is Active!"
+    return "VIP Bot (Fully Optimized & Bulletproof Security) is Active!"
 
 @app.route('/' + BOT_TOKEN, methods=['POST'])
 def webhook():
@@ -385,7 +385,7 @@ def get_main_keyboard(user_id):
     return markup
 
 # ==========================================
-# 6. TELEGRAM BOT HANDLERS & EVENTS (SAFE HTML)
+# 6. TELEGRAM BOT HANDLERS & EVENTS
 # ==========================================
 
 @bot.message_handler(func=lambda msg: msg.text in MENU_BUTTONS)
@@ -485,7 +485,7 @@ def handle_decrypt_callback(call):
     except Exception as e:
         bot.send_message(chat_id, f"❌ <b>Error:</b> <code>{str(e)}</code>", parse_mode="HTML")
 
-# ----------------- VIP MANAGEMENT SYSTEMS (SAFE HTML) -----------------
+# ----------------- ➕ ADD VIP USER WITH SECURITY CHECKS -----------------
 def cmd_add_vip(message):
     user_id = message.from_user.id
     if not is_reseller(user_id): return
@@ -495,7 +495,7 @@ def cmd_add_vip(message):
     user_states[user_id] = 'w_vip'
     
     msg_text = (
-        f"✍️ <b>VIP အသစ်ဆောက်ရန် ပုံစံတကျ Сာသားပေးပို့ပါ-</b>\n"
+        f"✍️ <b>VIP အသစ်ဆောက်ရန် ပုံစံတကျ စာသားပေးပို့ပါ-</b>\n"
         f"🪙 နှုန်းထား: <code>1 Day = 1 Token</code> (လက်ကျန်: <code>{current_tokens}</code> Tokens)\n\n"
         f"Format အတိုင်း အောက်ပါစာသားကို ကူးယူပြင်ဆင်ပြီး ပို့နိုင်ပါသည် -\n"
         f"<code>TelegramID | VIP_Name | Unit | Duration</code>\n\n"
@@ -511,24 +511,52 @@ def process_vip_add(message):
     if len(parts) != 4 or not parts[0].isdigit() or not parts[2].isdigit() or parts[3].lower() not in ['d', 'm']:
         return bot.reply_to(message, "❌ ပုံစံမှားနေပါသည်။ TelegramID | VIP_Name | Unit | Duration အတိုင်း သေချာပြန်ပို့ပေးပါ။")
     
+    target_vip_id = int(parts[0])
+    
+    pull_data_from_github()
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    # 💡 စစ်ဆေးချက် ၁: VIP စာရင်းထဲမှာ ရှိနှင့်ပြီးသားလား?
+    cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (str(target_vip_id),))
+    existing_vip = cursor.fetchone()
+    
+    # 💡 စစ်ဆေးချက် ၂: Reseller စာရင်းထဲမှာ ကန့်သတ်ထားပြီးသား ID လား? (Cross-Check)
+    cursor.execute("SELECT username FROM users WHERE tg_id = ?", (target_vip_id,))
+    existing_reseller = cursor.fetchone()
+    conn.close()
+    
+    if existing_vip:
+        user_states[user_id] = None
+        return bot.reply_to(message, f"❌ <b>ထည့်သွင်း၍မရပါ!</b>\n\nဒီ ID (<code>{target_vip_id}</code>) သည် VIP စနစ်ထဲတွင် <b>\"{existing_vip[0]}\"</b> ဟူသော နာမည်ဖြင့် ရှိနှင့်ပြီးသား ဖြစ်နေပါသည်။\n\n💡 သက်တမ်းတိုးလိုပါက <b>\"✏️ Edit VIP\"</b> ကို သုံးပါ။", parse_mode="HTML")
+
+    if existing_reseller:
+        user_states[user_id] = None
+        return bot.reply_to(message, f"❌ <b>ထည့်သွင်း၍မရပါ!</b>\n\nဒီ ID (<code>{target_vip_id}</code>) သည် Reseller စာရင်းထဲတွင် <b>\"{existing_reseller[0]}\"</b> အဖြစ် ရှိနေသောကြောင့် VIP ထည့်သွင်း၍ မရနိုင်ပါ။", parse_mode="HTML")
+
     required_tokens = calculate_days(parts[2], parts[3])
     current_tokens = get_reseller_tokens(user_id)
     
     if not is_admin(user_id) and current_tokens < required_tokens:
         return bot.reply_to(message, f"❌ Token မလုံလောက်ပါ။ ဤသက်တမ်းအတွက် {required_tokens} Tokens လိုအပ်သော်လည်း သင့်ထံတွင် {current_tokens} Tokens သာရှိသည်။")
 
-    try:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("INSERT OR REPLACE INTO auth_keys (target_id, key_string, unit_val, duration_type, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)", (parts[0], parts[1], parts[2], parts[3], user_id, datetime.now().strftime("%Y-%m-%d")))
-        conn.commit()
-        conn.close()
-        
-        if deduct_reseller_tokens_by_days(user_id, required_tokens):
+    # 💡 စဉ်ဆက်မပြတ်လုံခြုံရေး- တိုကင်အရင်နှုတ်ပြီးမှ DB ထဲထည့်မည်
+    if deduct_reseller_tokens_by_days(user_id, required_tokens):
+        try:
+            conn = sqlite3.connect(DB_FILE)
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO auth_keys (target_id, key_string, unit_val, duration_type, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)", (str(target_vip_id), parts[1], parts[2], parts[3], user_id, datetime.now().strftime("%Y-%m-%d")))
+            conn.commit()
+            conn.close()
+            
             new_balance = get_reseller_tokens(user_id)
-            bot.reply_to(message, f"✅ <b>VIP အကောင့် အောင်မြင်စွာ ဆောက်ပြီးပါပြီ။</b>\n🪙 နှုတ်ယူခဲ့သော တိုကင်: <code>{required_tokens}</code> Tokens\n💰 လက်ကျန်တိုကင်: <code>{new_balance}</code> Tokens", parse_mode="HTML")
+            bot.reply_to(message, f"✅ <b>VIP အကောင့် အောင်မြင်စွာ ဆောက်ပြီးပါပြီ။</b>\n👤 နာမည်: <b>{parts[1]}</b>\n🪙 နှုတ်ယူခဲ့သော တိုကင်: <code>{required_tokens}</code> Tokens\n💰 လက်ကျန်တိုကင်: <code>{new_balance}</code> Tokens", parse_mode="HTML")
             sync_db_to_github()
-    except Exception as e: bot.reply_to(message, f"❌ Error: {str(e)}")
+        except Exception as e: 
+            bot.reply_to(message, f"❌ Database Error: {str(e)}")
+    else:
+        bot.reply_to(message, "❌ တိုကင်နှုတ်ယူခြင်း မအောင်မြင်ပါ။")
+        
     user_states[user_id] = None
 
 def cmd_my_vips(message):
@@ -566,7 +594,7 @@ def admin_reseller_edit_vip_menu(message):
     
     if not rows: return bot.reply_to(message, "📭 ပြင်ဆင်ရန် VIP အသုံးပြုသူ လုံးဝမရှိသေးပါ။")
     
-    res_list = "📝 <b>လက်ရှိ VIP အသုံးပြုသူ စာရင်းများ</b>\n\n"
+    res_list = "📝 <b>...လက်ရှိ VIP အသုံးပြုသူ စာရင်းများ...</b>\n\n"
     res_list += "💡 <i>(Telegram ID ကို နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူနိုင်ပါသည်)</i>\n"
     res_list += "--------------------------------------\n"
     for r in rows: 
@@ -623,16 +651,20 @@ def process_edit_vip_duration(message):
         return bot.reply_to(message, f"❌ သက်တမ်းတိုးရန် Token မလုံလောက်ပါ။ တိုကင် {new_days} ခု လိုအပ်သည်။")
         
     pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("UPDATE auth_keys SET unit_val = ?, duration_type = ?, created_at = ? WHERE target_id = ?", (int(parts[0]), parts[1].lower(), datetime.now().strftime("%Y-%m-%d"), str(temp['target_id'])))
-    conn.commit()
-    conn.close()
     
+    # 💡 ဘေးကင်းစိတ်ချရသော ကုဒ်စီစဉ်မှု: Token အရင် အောင်မြင်စွာ နှုတ်ပြီးမှ DB ကို Update လုပ်မည်
     if deduct_reseller_tokens_by_days(user_id, new_days):
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE auth_keys SET unit_val = ?, duration_type = ?, created_at = ? WHERE target_id = ?", (int(parts[0]), parts[1].lower(), datetime.now().strftime("%Y-%m-%d"), str(temp['target_id'])))
+        conn.commit()
+        conn.close()
+        
         sync_db_to_github()
         new_balance = get_reseller_tokens(user_id)
         bot.reply_to(message, f"✅ VIP User: <b>{temp['name']}</b> ကို သက်တမ်း အသစ်လဲလှယ်ပြီးပါပြီ။\n🪙 နှုတ်ယူခဲ့သော Token: <code>{new_days}</code> Tokens\n💰 လက်ကျန်တိုကင်: <code>{new_balance}</code> Tokens", parse_mode="HTML")
+    else:
+        bot.reply_to(message, "❌ Token နှုတ်ယူခြင်း မအောင်မြင်သောကြောင့် မပြင်ဆင်နိုင်ပါ။")
     
     user_states[user_id] = None
     if user_id in reseller_temp_data: del reseller_temp_data[user_id]
@@ -682,11 +714,13 @@ def process_delete_vip_by_id(message):
     cursor.execute("DELETE FROM auth_keys WHERE target_id = ?", (str(id_to_del),))
     conn.commit()
     conn.close()
+    
+    # 💡 ချက်ချင်း Sync လုပ်၍ ပျောက်ပျက်သွားစေရန်
     sync_db_to_github()
-    bot.reply_to(message, f"✅ VIP User: <b>{row[0]}</b> ကို ဖျက်ထုတ်ပြီးပါပြီ။ (မှတ်ချက်။ ။ တိုကင်များ ပြန်အမ်းမည်မဟုတ်ပါ)", parse_mode="HTML")
+    bot.reply_to(message, f"✅ VIP User: <b>{row[0]}</b> ကို ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode="HTML")
     user_states[user_id] = None
 
-# ----------------- ADMIN COMMANDS (RESELLERS - SAFE HTML) -----------------
+# ----------------- 👤 CREATE RESELLER WITH SECURITY CHECKS -----------------
 def admin_create_reseller(message):
     if not is_admin(message.from_user.id): return
     user_states[message.from_user.id] = 'w_one_line_reseller'
@@ -715,12 +749,31 @@ def process_one_line_reseller(message):
     if not r_name:
         return bot.reply_to(message, "❌ Reseller နာမည် ထည့်သွင်းရန် ကျန်ရှိနေပါသည်။")
     
+    pull_data_from_github()
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    # 💡 စစ်ဆေးချက် ၁: Reseller ထဲမှာ ရှိနှင့်ပြီးသားလား?
+    cursor.execute("SELECT username, token_balance FROM users WHERE tg_id = ?", (r_id,))
+    existing_reseller = cursor.fetchone()
+    
+    # 💡 စစ်ဆေးချက် ၂: VIP ထဲမှာ ရှိနှင့်ပြီးသား ID လား? (Cross-Check)
+    cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (str(r_id),))
+    existing_vip = cursor.fetchone()
+    conn.close()
+    
+    if existing_reseller:
+        user_states[admin_id] = None
+        return bot.reply_to(message, f"❌ <b>ထည့်သွင်း၍မရပါ!</b>\n\nဒီ ID (<code>{r_id}</code>) သည် စနစ်ထဲတွင် Reseller တစ်ဦးအနေဖြင့် ရှိနှင့်ပြီးသား ဖြစ်နေပါသည်။\n👤 နာမည်: <b>{existing_reseller[0]}</b>\n🪙 Token: <code>{existing_reseller[1]}</code> Tokens", parse_mode="HTML")
+
+    if existing_vip:
+        user_states[admin_id] = None
+        return bot.reply_to(message, f"❌ <b>ထည့်သွင်း၍မရပါ!</b>\n\nဒီ ID (<code>{r_id}</code>) သည် VIP အသုံးပြုသူစာရင်းထဲတွင် <b>\"{existing_vip[0]}\"</b> အဖြစ် ရှိနေသောကြောင့် ၎င်းအား Reseller အဖြစ် ခန့်အပ်၍ မရနိုင်ပါ။", parse_mode="HTML")
+
     try:
-        pull_data_from_github()
-        
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
-        cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, token_balance) VALUES (?, ?, 'reseller', ?)", (r_id, r_name, r_tokens))
+        cursor.execute("INSERT INTO users (tg_id, username, role, token_balance) VALUES (?, ?, 'reseller', ?)", (r_id, r_name, r_tokens))
         conn.commit()
         conn.close()
         
@@ -781,6 +834,8 @@ def process_delete_reseller_by_id(message):
     cursor.execute("DELETE FROM users WHERE tg_id = ?", (int(id_to_del),))
     conn.commit()
     conn.close()
+    
+    # 💡 ချက်ချင်း Sync လုပ်ပေးခြင်း
     sync_resellers_to_github()
     bot.reply_to(message, f"✅ Reseller: <b>{row[0]}</b> ကို ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode="HTML")
     user_states[user_id] = None

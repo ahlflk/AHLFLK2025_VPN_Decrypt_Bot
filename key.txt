@@ -1,2 +1,1 @@
-# Telegram_ID | VIP_Name | Unit | Duration | 5376544115 | Created_Date
-1234567890 | AHLFLK2025 | 30 | d | 5376544115 | 2026-06-01
+# Telegram_ID | VIP_Name | Unit | Duration | User_ID | Created_Date
