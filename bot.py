@@ -1,5 +1,5 @@
 # # All-in-One Safe Decryptor & Telegram VIP Management Bot (1 Day = 1 Token System)
-# Py By @AHLFLK2025 (Optimized with Dynamic Token Deduction & One-Line Fast Creation)
+# Py By @AHLFLK2025 (Fully Fixed Type Mismatch & Strong Data Sanitization)
 import os
 import re
 import json
@@ -574,11 +574,12 @@ def admin_reseller_edit_vip_menu(message):
     for r in rows: 
         res_list += f"🆔 `{r[0]}` | 👤 *{r[1]}* ({r[2]}{r[3]})\n"
     res_list += "--------------------------------------\n\n"
-    res_list += "✍ *သက်တမ်းပြင်ဆင်/တိုးမြှင့်လိုသော VIP ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-*"
+    res_list += "✍️ *သက်တမ်းပြင်ဆင်/တိုးမြှင့်လိုသော VIP ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-*"
     
     user_states[user_id] = 'w_edit_vip_id'
     bot.send_message(message.chat.id, res_list, parse_mode="Markdown")
 
+# 🛠️ FIXED: Text ID Type Mismatch Bug
 @bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_vip_id')
 def process_edit_vip_id(message):
     user_id = message.from_user.id
@@ -587,16 +588,17 @@ def process_edit_vip_id(message):
         
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
+    # Database text နှိုင်းယှဉ်မှု မှန်ကန်စေရန် str() သို့ ပြောင်းလဲစစ်ဆေးသည်
     if is_admin(user_id):
-        cursor.execute("SELECT key_string, unit_val, duration_type FROM auth_keys WHERE target_id = ?", (int(target_id_str),))
+        cursor.execute("SELECT key_string, unit_val, duration_type FROM auth_keys WHERE target_id = ?", (str(target_id_str),))
     else:
-        cursor.execute("SELECT key_string, unit_val, duration_type FROM auth_keys WHERE target_id = ? AND added_by = ?", (int(target_id_str), user_id))
+        cursor.execute("SELECT key_string, unit_val, duration_type FROM auth_keys WHERE target_id = ? AND added_by = ?", (str(target_id_str), user_id))
     row = cursor.fetchone()
     conn.close()
     
     if not row: return bot.reply_to(message, "❌ ဤ ID ဖြင့် VIP အား ရှာမတွေ့ပါ သို့မဟုတ် ပြင်ဆင်ခွင့်မရှိပါ။")
         
-    reseller_temp_data[user_id] = {'target_id': int(target_id_str), 'name': row[0]}
+    reseller_temp_data[user_id] = {'target_id': str(target_id_str), 'name': row[0]}
     user_states[user_id] = 'w_edit_vip_duration'
     
     edit_msg = (
@@ -629,7 +631,7 @@ def process_edit_vip_duration(message):
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("UPDATE auth_keys SET unit_val = ?, duration_type = ?, created_at = ? WHERE target_id = ?", (int(parts[0]), parts[1].lower(), datetime.now().strftime("%Y-%m-%d"), temp['target_id']))
+    cursor.execute("UPDATE auth_keys SET unit_val = ?, duration_type = ?, created_at = ? WHERE target_id = ?", (int(parts[0]), parts[1].lower(), datetime.now().strftime("%Y-%m-%d"), str(temp['target_id'])))
     conn.commit()
     conn.close()
     
@@ -676,14 +678,14 @@ def process_delete_vip_by_id(message):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     if is_admin(user_id):
-        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (int(id_to_del),))
+        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (str(id_to_del),))
     else:
-        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ? AND added_by = ?", (int(id_to_del), user_id))
+        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ? AND added_by = ?", (str(id_to_del), user_id))
     row = cursor.fetchone()
     if not row:
         conn.close()
         return bot.reply_to(message, "❌ ရှာမတွေ့ပါ သို့မဟုတ် ဖျက်ခွင့်မရှိပါ။")
-    cursor.execute("DELETE FROM auth_keys WHERE target_id = ?", (int(id_to_del),))
+    cursor.execute("DELETE FROM auth_keys WHERE target_id = ?", (str(id_to_del),))
     conn.commit()
     conn.close()
     sync_db_to_github()
@@ -691,7 +693,6 @@ def process_delete_vip_by_id(message):
     user_states[user_id] = None
 
 # ----------------- ADMIN COMMANDS (RESELLERS) -----------------
-# Fast One-Line Reseller Creator စနစ်သို့ ပြောင်းလဲပြင်ဆင်ခြင်း
 def admin_create_reseller(message):
     if not is_admin(message.from_user.id): return
     user_states[message.from_user.id] = 'w_one_line_reseller'
@@ -705,6 +706,7 @@ def admin_create_reseller(message):
     )
     bot.reply_to(message, r_msg, parse_mode="Markdown")
 
+# 🛠️ FIXED: Strong Sanitization for Reseller Creation
 @bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_one_line_reseller')
 def process_one_line_reseller(message):
     admin_id = message.from_user.id
