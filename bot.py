@@ -388,11 +388,11 @@ def get_main_keyboard(user_id):
 # 6. TELEGRAM BOT HANDLERS & EVENTS
 # ==========================================
 
-# Global Menu Interceptor to clear states instantly when any menu button is clicked
-@bot.message_handler(func=lambda msg: msg.text in MENU_BUTTONS)
+# Fixed Interceptor: Only reset state if the incoming message is a main menu button AND the user is NOT inside an active state input flow.
+@bot.message_handler(func=lambda msg: msg.text in MENU_BUTTONS and user_states.get(msg.from_user.id) not in ['w_edit_vip_id', 'w_edit_vip_duration', 'w_del_vip', 'w_vip', 'w_r_id', 'w_r_name', 'w_r_limit', 'w_del_reseller'])
 def handle_menu_buttons(message):
     user_id = message.from_user.id
-    user_states[user_id] = None # Reset previous states
+    user_states[user_id] = None # Safe to reset here
     
     if message.text == "🌐 VPN Decrypt List":
         display_decrypt_list(message, user_id, message.chat.id)
@@ -701,7 +701,7 @@ def process_r_limit(message):
         conn.close()
         bot.reply_to(message, f"✅ Reseller: `{r_name}` အား Token `{r_tokens}` ခု (ရက်ပေါင်း {r_tokens} စာ) ဖြင့် ဖန်တီးပြီးပါပြီ။")
         sync_resellers_to_github()
-    except: bot.reply_to(message, "❌ မှားယွင်းနေပါသည်။")
+    except: bot.reply_to(message, "❌ : မှားယွင်းနေပါသည်။")
     user_states[admin_id] = None
     if admin_id in reseller_temp_data: del reseller_temp_data[admin_id]
 
