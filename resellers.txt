@@ -1,1 +1,2 @@
-5376544115 | Main_Admin | 9999999
+# Telegram_ID | Reseller_ID | Unit
+5376544115 | 5376544115 | 9999999
