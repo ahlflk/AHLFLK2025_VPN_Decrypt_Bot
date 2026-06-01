@@ -500,7 +500,7 @@ def cmd_add_vip(message):
         f"Format အတိုင်း အောက်ပါစာသားကို ကူးယူပြင်ဆင်ပြီး ပို့နိုင်ပါသည် -\n"
         f"<code>TelegramID | VIP_Name | Unit | Duration</code>\n\n"
         f"👇 <b>နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူရန် နမူနာ-</b>\n"
-        f"<code>0123456789 | AHLFLK2025 | 30 | d</code>"
+        f"<code>1234567890 | AHLFLK2025 | 30 | d</code>"
     )
     bot.reply_to(message, msg_text, parse_mode="HTML")
 
@@ -602,7 +602,7 @@ def process_edit_vip_id(message):
         f"✍️ ပြောင်းလဲသတ်မှတ်လိုသော <b>သက်တမ်းအသစ်</b> ကို <code>Unit | Duration</code> ပုံစံဖြင့် ပို့ပေးပါ-\n"
         f"(ထည့်သွင်းလိုက်သော သက်တမ်းရက်အလိုက် Token ထပ်မံနှုတ်ယူပါမည်)\n\n"
         f"👇 <b>နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူပြင်ဆင်ရန် နမူနာ-</b>\n"
-        f"<code>60 | d</code>"
+        f"<code>30 | d</code>"
     )
     bot.reply_to(message, edit_msg, parse_mode="HTML")
 
@@ -696,7 +696,7 @@ def admin_create_reseller(message):
         f"Format လမ်းညွှန် -\n"
         f"<code>TelegramID | Reseller_Name | Tokens</code>\n\n"
         f"👇 <b>နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူပြင်ဆင်ရန် နမူနာ-</b>\n"
-        f"<code>5376544115 | MgMg_Reseller | 500</code>"
+        f"<code>1234567890 | MgMg_Reseller | 500</code>"
     )
     bot.reply_to(message, r_msg, parse_mode="HTML")
 

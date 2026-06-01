@@ -1,2 +1,2 @@
-5376544115 | MgMg_Reseller | 500
-5376595315 | MgMg_Reseller | 500
+# Telegram_ID | Reseller_ID | Unit
+
