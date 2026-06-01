@@ -1,2 +1,2 @@
 5376474115 | MgMg | 500
-5376544115 | MgMg_Reseller | 500
+5376544115 | MgMgReseller | 500
