@@ -1,5 +1,5 @@
 # # All-in-One Safe Decryptor & Telegram VIP Management Bot (1 Day = 1 Token System)
-# Py By @AHLFLK2025 (Fully Fixed Type Mismatch & Strong Data Sanitization)
+# Py By @AHLFLK2025 (Fully Fixed Markdown Parse Error & Safe HTML Mode)
 import os
 import re
 import json
@@ -44,7 +44,7 @@ MENU_BUTTONS = ["🌐 VPN Decrypt List", "➕ Add VIP User", "🔑 My VIP Users"
 # ==========================================
 @app.route('/')
 def home():
-    return "VIP Bot (1 Day = 1 Token System) is Active!"
+    return "VIP Bot (HTML Mode Safe System) is Active!"
 
 @app.route('/' + BOT_TOKEN, methods=['POST'])
 def webhook():
@@ -385,7 +385,7 @@ def get_main_keyboard(user_id):
     return markup
 
 # ==========================================
-# 6. TELEGRAM BOT HANDLERS & EVENTS
+# 6. TELEGRAM BOT HANDLERS & EVENTS (SAFE HTML)
 # ==========================================
 
 @bot.message_handler(func=lambda msg: msg.text in MENU_BUTTONS)
@@ -421,18 +421,18 @@ def display_decrypt_list(message_or_call, user_id, chat_id):
     is_vip, exp_status = check_vip_status(user_id)
     
     if not is_vip:
-        no_vip_text = f"🚫 **သင်သည် VIP စနစ်အသုံးပြုခွင့် မရှိသေးပါ!**\n\nသင့်ရဲ့ Telegram ID: `{user_id}` အား Admin ထံပေးပို့၍ VIP သက်တမ်းဝယ်ယူပါ။"
+        no_vip_text = f"🚫 <b>သင်သည် VIP စနစ်အသုံးပြုခွင့် မရှိသေးပါ!</b>\n\nသင့်ရဲ့ Telegram ID: <code>{user_id}</code> အား Admin ထံပေးပို့၍ VIP သက်တမ်းဝယ်ယူပါ။"
         admin_markup = types.InlineKeyboardMarkup()
         admin_markup.add(types.InlineKeyboardButton(text="💬 Contact Admin", url="https://t.me/ahlflk2025"))
         
         if isinstance(message_or_call, types.Message):
-            bot.reply_to(message_or_call, no_vip_text, reply_markup=admin_markup, parse_mode="Markdown")
+            bot.reply_to(message_or_call, no_vip_text, reply_markup=admin_markup, parse_mode="HTML")
         else:
-            bot.send_message(chat_id, no_vip_text, reply_markup=admin_markup, parse_mode="Markdown")
+            bot.send_message(chat_id, no_vip_text, reply_markup=admin_markup, parse_mode="HTML")
         return
 
     configs = get_vpn_configs()
-    welcome_text = f"👋 **Safe Decryptor & VIP Center မှ ကြိုဆိုပါတယ်!**\n\n⌛ **သင့် VIP သက်တမ်းကုန်မည့်ရက်:** `{exp_status}`\n\nDecrypt လုပ်ချင်တဲ့ VPN Config အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ -"
+    welcome_text = f"👋 <b>Safe Decryptor & VIP Center မှ ကြိုဆိုပါတယ်!</b>\n\n⏳ <b>သင့် VIP သက်တမ်းကုန်မည့်ရက်:</b> <code>{exp_status}</code>\n\nDecrypt လုပ်ချင်တဲ့ VPN Config အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ -"
     
     markup = types.InlineKeyboardMarkup(row_width=2)
     buttons = []
@@ -444,9 +444,9 @@ def display_decrypt_list(message_or_call, user_id, chat_id):
         markup.row(*buttons[i:i+2])
         
     if isinstance(message_or_call, types.Message):
-        bot.reply_to(message_or_call, welcome_text, reply_markup=get_main_keyboard(user_id), parse_mode="Markdown")
+        bot.reply_to(message_or_call, welcome_text, reply_markup=get_main_keyboard(user_id), parse_mode="HTML")
     else:
-        bot.send_message(chat_id, welcome_text, reply_markup=get_main_keyboard(user_id), parse_mode="Markdown")
+        bot.send_message(chat_id, welcome_text, reply_markup=get_main_keyboard(user_id), parse_mode="HTML")
         
     if configs: 
         bot.send_message(chat_id, "👇 Decrypt Configurations List:", reply_markup=markup)
@@ -471,7 +471,7 @@ def handle_decrypt_callback(call):
     selected_vpn = next((item for item in configs if item["id"] == vpn_id), None)
     if not selected_vpn: return
 
-    status_msg = bot.send_message(chat_id, f"⏳ **{selected_vpn['name']} VPN Config ကို Decrypt လုပ်နေပါတယ်...**", parse_mode="Markdown")
+    status_msg = bot.send_message(chat_id, f"⏳ <b>{selected_vpn['name']} VPN Config ကို Decrypt လုပ်နေပါတယ်...</b>", parse_mode="HTML")
     try:
         result_json = perform_decryption(selected_vpn["url"], selected_vpn["outer_key"], selected_vpn["outer_delta"], selected_vpn["method"])
         temp_file_path = f"{vpn_id}_decrypted.json"
@@ -480,12 +480,12 @@ def handle_decrypt_callback(call):
             
         bot.delete_message(chat_id, status_msg.message_id)
         with open(temp_file_path, 'rb') as doc:
-            bot.send_document(chat_id, doc, caption=f"✅ **{selected_vpn['name']} Decrypted Successfully!**", parse_mode="Markdown")
+            bot.send_document(chat_id, doc, caption=f"✅ <b>{selected_vpn['name']} Decrypted Successfully!</b>", parse_mode="HTML")
         if os.path.exists(temp_file_path): os.remove(temp_file_path)
     except Exception as e:
-        bot.send_message(chat_id, f"❌ **Error:** `{str(e)}`", parse_mode="Markdown")
+        bot.send_message(chat_id, f"❌ <b>Error:</b> <code>{str(e)}</code>", parse_mode="HTML")
 
-# ----------------- VIP MANAGEMENT SYSTEMS -----------------
+# ----------------- VIP MANAGEMENT SYSTEMS (SAFE HTML) -----------------
 def cmd_add_vip(message):
     user_id = message.from_user.id
     if not is_reseller(user_id): return
@@ -495,29 +495,27 @@ def cmd_add_vip(message):
     user_states[user_id] = 'w_vip'
     
     msg_text = (
-        f"✍️ **VIP အသစ်ဆောက်ရန် ပုံစံတကျ စာသားပေးပို့ပါ-**\n"
-        f"🪙 နှုန်းထား: `1 Day = 1 Token` (လက်ကျန်: `{current_tokens}` Tokens)\n\n"
+        f"✍️ <b>VIP အသစ်ဆောက်ရန် ပုံစံတကျ Сာသားပေးပို့ပါ-</b>\n"
+        f"🪙 နှုန်းထား: <code>1 Day = 1 Token</code> (လက်ကျန်: <code>{current_tokens}</code> Tokens)\n\n"
         f"Format အတိုင်း အောက်ပါစာသားကို ကူးယူပြင်ဆင်ပြီး ပို့နိုင်ပါသည် -\n"
-        f"`TelegramID | VIP_Name | Unit | Duration`\n\n"
-        f"👇 **နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူရန် နမူနာ-**\n"
-        f"`0123456789 | AHLFLK2025 | 30 | d`"
+        f"<code>TelegramID | VIP_Name | Unit | Duration</code>\n\n"
+        f"👇 <b>နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူရန် နမူနာ-</b>\n"
+        f"<code>0123456789 | AHLFLK2025 | 30 | d</code>"
     )
-    bot.reply_to(message, msg_text, parse_mode="Markdown")
+    bot.reply_to(message, msg_text, parse_mode="HTML")
 
 @bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_vip')
 def process_vip_add(message):
     user_id = message.from_user.id
     parts = [p.strip() for p in message.text.split("|")]
     if len(parts) != 4 or not parts[0].isdigit() or not parts[2].isdigit() or parts[3].lower() not in ['d', 'm']:
-        return bot.reply_to(message, "❌ ပုံစံမှားနေပါသည်။ `TelegramID | VIP_Name | Unit | Duration` အတိုင်း သေချာပြန်ပို့ပေးပါ။")
+        return bot.reply_to(message, "❌ ပုံစံမှားနေပါသည်။ TelegramID | VIP_Name | Unit | Duration အတိုင်း သေချာပြန်ပို့ပေးပါ။")
     
     required_tokens = calculate_days(parts[2], parts[3])
     current_tokens = get_reseller_tokens(user_id)
     
     if not is_admin(user_id) and current_tokens < required_tokens:
-        bot.reply_to(message, f"❌ Token မလုံလောက်ပါ။ ဤသက်တမ်းအတွက် `{required_tokens}` Tokens လိုအပ်သော်လည်း သင့်ထံတွင် `{current_tokens}` Tokens သာရှိသည်။")
-        user_states[user_id] = None
-        return
+        return bot.reply_to(message, f"❌ Token မလုံလောက်ပါ။ ဤသက်တမ်းအတွက် {required_tokens} Tokens လိုအပ်သော်လည်း သင့်ထံတွင် {current_tokens} Tokens သာရှိသည်။")
 
     try:
         conn = sqlite3.connect(DB_FILE)
@@ -528,7 +526,7 @@ def process_vip_add(message):
         
         if deduct_reseller_tokens_by_days(user_id, required_tokens):
             new_balance = get_reseller_tokens(user_id)
-            bot.reply_to(message, f"✅ VIP အကောင့် အောင်မြင်စွာ ဆောက်ပြီးပါပြီ။\n🪙 နှုတ်ယူခဲ့သော တိုကင်: `{required_tokens}` Tokens\n💰 လက်ကျန်တိုကင်: `{new_balance}` Tokens", parse_mode="Markdown")
+            bot.reply_to(message, f"✅ <b>VIP အကောင့် အောင်မြင်စွာ ဆောက်ပြီးပါပြီ။</b>\n🪙 နှုတ်ယူခဲ့သော တိုကင်: <code>{required_tokens}</code> Tokens\n💰 လက်ကျန်တိုကင်: <code>{new_balance}</code> Tokens", parse_mode="HTML")
             sync_db_to_github()
     except Exception as e: bot.reply_to(message, f"❌ Error: {str(e)}")
     user_states[user_id] = None
@@ -542,16 +540,16 @@ def cmd_my_vips(message):
     rows = cursor.fetchall()
     conn.close()
     if not rows: return bot.reply_to(message, "📭 သင်ထည့်သွင်းထားသော VIP အကောင့်မရှိသေးပါ။")
-    res = "👥 **...သင်ထည့်ထားသော VIP အသုံးပြုသူများ...**\n\n"
-    for r in rows: res += f"• ID: `{r[0]}` -> နာမည်: `{r[1]}` (သက်တမ်း: `{r[2]} {r[3]}`)\n"
-    bot.reply_to(message, res, parse_mode="Markdown")
+    res = "👥 <b>...သင်ထည့်ထားသော VIP အသုံးပြုသူများ...</b>\n\n"
+    for r in rows: res += f"• ID: <code>{r[0]}</code> -> နာမည်: <b>{r[1]}</b> (သက်တမ်း: {r[2]} {r[3]})\n"
+    bot.reply_to(message, res, parse_mode="HTML")
 
 def cmd_my_balance(message):
     user_id = message.from_user.id
     if not is_reseller(user_id): return
     pull_data_from_github()
     tokens = get_reseller_tokens(user_id)
-    bot.reply_to(message, f"💰 **လက်ကျန် Token စာရင်း (1 Day = 1 Token):**\n\n👤 Reseller: {message.from_user.first_name}\n📊 Credit Balance: {tokens} Tokens (ရက်ပေါင်း {tokens} စာ ဆောက်နိုင်သည်)", reply_markup=get_main_keyboard(user_id))
+    bot.reply_to(message, f"💰 <b>လက်ကျန် Token စာရင်း (1 Day = 1 Token):</b>\n\n👤 Reseller: {message.from_user.first_name}\n📊 Credit Balance: {tokens} Tokens (ရက်ပေါင်း {tokens} စာ ဆောက်နိုင်သည်)", reply_markup=get_main_keyboard(user_id))
 
 def admin_reseller_edit_vip_menu(message):
     user_id = message.from_user.id
@@ -568,18 +566,17 @@ def admin_reseller_edit_vip_menu(message):
     
     if not rows: return bot.reply_to(message, "📭 ပြင်ဆင်ရန် VIP အသုံးပြုသူ လုံးဝမရှိသေးပါ။")
     
-    res_list = "📝 *လက်ရှိ VIP အသုံးပြုသူ စာရင်းများ*\n\n"
-    res_list += "💡 _(Telegram ID ကို နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူနိုင်ပါသည်)_\n"
+    res_list = "📝 <b>လက်ရှိ VIP အသုံးပြုသူ စာရင်းများ</b>\n\n"
+    res_list += "💡 <i>(Telegram ID ကို နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူနိုင်ပါသည်)</i>\n"
     res_list += "--------------------------------------\n"
     for r in rows: 
-        res_list += f"🆔 `{r[0]}` | 👤 *{r[1]}* ({r[2]}{r[3]})\n"
+        res_list += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b> ({r[2]}{r[3]})\n"
     res_list += "--------------------------------------\n\n"
-    res_list += "✍️ *သက်တမ်းပြင်ဆင်/တိုးမြှင့်လိုသော VIP ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-*"
+    res_list += "✍️ <b>သက်တမ်းပြင်ဆင်/တိုးမြှင့်လိုသော VIP ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-</b>"
     
     user_states[user_id] = 'w_edit_vip_id'
-    bot.send_message(message.chat.id, res_list, parse_mode="Markdown")
+    bot.send_message(message.chat.id, res_list, parse_mode="HTML")
 
-# 🛠️ FIXED: Text ID Type Mismatch Bug
 @bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_vip_id')
 def process_edit_vip_id(message):
     user_id = message.from_user.id
@@ -588,7 +585,6 @@ def process_edit_vip_id(message):
         
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    # Database text နှိုင်းယှဉ်မှု မှန်ကန်စေရန် str() သို့ ပြောင်းလဲစစ်ဆေးသည်
     if is_admin(user_id):
         cursor.execute("SELECT key_string, unit_val, duration_type FROM auth_keys WHERE target_id = ?", (str(target_id_str),))
     else:
@@ -602,13 +598,13 @@ def process_edit_vip_id(message):
     user_states[user_id] = 'w_edit_vip_duration'
     
     edit_msg = (
-        f"👤 အကောင့်: **{row[0]}**\n\n"
-        f"✍️ ပြောင်းလဲသတ်မှတ်လိုသော **သက်တမ်းအသစ်** ကို `Unit | Duration` ပုံစံဖြင့် ပို့ပေးပါ-\n"
+        f"👤 အကောင့်: <b>{row[0]}</b>\n\n"
+        f"✍️ ပြောင်းလဲသတ်မှတ်လိုသော <b>သက်တမ်းအသစ်</b> ကို <code>Unit | Duration</code> ပုံစံဖြင့် ပို့ပေးပါ-\n"
         f"(ထည့်သွင်းလိုက်သော သက်တမ်းရက်အလိုက် Token ထပ်မံနှုတ်ယူပါမည်)\n\n"
-        f"👇 **နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူပြင်ဆင်ရန် နမူနာ-**\n"
-        f"`60 | d`"
+        f"👇 <b>နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူပြင်ဆင်ရန် နမူနာ-</b>\n"
+        f"<code>60 | d</code>"
     )
-    bot.reply_to(message, edit_msg, parse_mode="Markdown")
+    bot.reply_to(message, edit_msg, parse_mode="HTML")
 
 @bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_vip_duration')
 def process_edit_vip_duration(message):
@@ -618,15 +614,13 @@ def process_edit_vip_duration(message):
         
     parts = [p.strip() for p in message.text.split("|")]
     if len(parts) != 2 or not parts[0].isdigit() or parts[1].lower() not in ['d', 'm']:
-        return bot.reply_to(message, "❌ Format မှားယွင်းနေပါသည်။ ဥပမာ- `30 | d` ဟု ပို့ပေးပါ။")
+        return bot.reply_to(message, "❌ Format မှားယွင်းနေပါသည်။ ဥပမာ- <code>30 | d</code> ဟု ပို့ပေးပါ။")
         
     new_days = calculate_days(parts[0], parts[1])
     current_tokens = get_reseller_tokens(user_id)
     
     if not is_admin(user_id) and current_tokens < new_days:
-        bot.reply_to(message, f"❌ သက်တမ်းတိုးရန် Token မလုံလောက်ပါ။ တိုကင် `{new_days}` ခု လိုအပ်သည်။")
-        user_states[user_id] = None
-        return
+        return bot.reply_to(message, f"❌ သက်တမ်းတိုးရန် Token မလုံလောက်ပါ။ တိုကင် {new_days} ခု လိုအပ်သည်။")
         
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
@@ -638,7 +632,7 @@ def process_edit_vip_duration(message):
     if deduct_reseller_tokens_by_days(user_id, new_days):
         sync_db_to_github()
         new_balance = get_reseller_tokens(user_id)
-        bot.reply_to(message, f"✅ VIP User: **{temp['name']}** ကို သက်တမ်း အသစ်လဲလှယ်ပြီးပါပြီ။\n🪙 နှုတ်ယူခဲ့သော Token: `{new_days}` Tokens\n💰 လက်ကျန်တိုကင်: `{new_balance}` Tokens", parse_mode="Markdown")
+        bot.reply_to(message, f"✅ VIP User: <b>{temp['name']}</b> ကို သက်တမ်း အသစ်လဲလှယ်ပြီးပါပြီ။\n🪙 နှုတ်ယူခဲ့သော Token: <code>{new_days}</code> Tokens\n💰 လက်ကျန်တိုကင်: <code>{new_balance}</code> Tokens", parse_mode="HTML")
     
     user_states[user_id] = None
     if user_id in reseller_temp_data: del reseller_temp_data[user_id]
@@ -658,16 +652,16 @@ def admin_reseller_delete_vip_menu(message):
     
     if not rows: return bot.reply_to(message, "📭 ဖျက်ရန် VIP မရှိပါ။")
     
-    res_list = "🗑 *လက်ရှိ VIP အသုံးပြုသူ စာရင်းများ*\n\n"
-    res_list += "💡 _(Telegram ID ကို နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူနိုင်ပါသည်)_\n"
+    res_list = "🗑 <b>လက်ရှိ VIP အသုံးပြုသူ စာရင်းများ</b>\n\n"
+    res_list += "💡 <i>(Telegram ID ကို နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူနိုင်ပါသည်)</i>\n"
     res_list += "--------------------------------------\n"
     for r in rows: 
-        res_list += f"🆔 `{r[0]}` | 👤 *{r[1]}*\n"
+        res_list += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b>\n"
     res_list += "--------------------------------------\n\n"
-    res_list += "✍️ *ဖျက်ထုတ်လိုသော VIP ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-*"
+    res_list += "✍️ <b>ဖျက်ထုတ်လိုသော VIP ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-</b>"
     
     user_states[user_id] = 'w_del_vip'
-    bot.send_message(message.chat.id, res_list, parse_mode="Markdown")
+    bot.send_message(message.chat.id, res_list, parse_mode="HTML")
 
 @bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_del_vip')
 def process_delete_vip_by_id(message):
@@ -689,44 +683,54 @@ def process_delete_vip_by_id(message):
     conn.commit()
     conn.close()
     sync_db_to_github()
-    bot.reply_to(message, f"✅ VIP User: **{row[0]}** ကို ဖျက်ထုတ်ပြီးပါပြီ။ (မှတ်ချက်။ ။ တိုကင်များ ပြန်အမ်းမည်မဟုတ်ပါ)", parse_mode="Markdown")
+    bot.reply_to(message, f"✅ VIP User: <b>{row[0]}</b> ကို ဖျက်ထုတ်ပြီးပါပြီ။ (မှတ်ချက်။ ။ တိုကင်များ ပြန်အမ်းမည်မဟုတ်ပါ)", parse_mode="HTML")
     user_states[user_id] = None
 
-# ----------------- ADMIN COMMANDS (RESELLERS) -----------------
+# ----------------- ADMIN COMMANDS (RESELLERS - SAFE HTML) -----------------
 def admin_create_reseller(message):
     if not is_admin(message.from_user.id): return
     user_states[message.from_user.id] = 'w_one_line_reseller'
     
     r_msg = (
-        f"👤 **Reseller အသစ်ဖန်တီးရန် အောက်ပါပုံစံအတိုင်း စာသားပေးပို့ပါ-**\n\n"
+        f"👤 <b>Reseller အသစ်ဖန်တီးရန် အောက်ပါပုံစံအတိုင်း စာသားပေးပို့ပါ-</b>\n\n"
         f"Format လမ်းညွှန် -\n"
-        f"`TelegramID | Reseller_Name | Tokens`\n\n"
-        f"👇 **နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူပြင်ဆင်ရန် နမူနာ-**\n"
-        f"`5376544115 | MgMg_Reseller | 500`"
+        f"<code>TelegramID | Reseller_Name | Tokens</code>\n\n"
+        f"👇 <b>နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူပြင်ဆင်ရန် နမူနာ-</b>\n"
+        f"<code>5376544115 | MgMg_Reseller | 500</code>"
     )
-    bot.reply_to(message, r_msg, parse_mode="Markdown")
+    bot.reply_to(message, r_msg, parse_mode="HTML")
 
-# 🛠️ FIXED: Strong Sanitization for Reseller Creation
 @bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_one_line_reseller')
 def process_one_line_reseller(message):
     admin_id = message.from_user.id
     parts = [p.strip() for p in message.text.split("|")]
     
     if len(parts) != 3 or not parts[0].isdigit() or not parts[2].isdigit():
-        return bot.reply_to(message, "❌ ပုံစံမှားယွင်းနေပါသည်။ `TelegramID | Reseller_Name | Tokens` အတိုင်း ပို့ပေးပါ။")
+        return bot.reply_to(message, "❌ ပုံစံမှားယွင်းနေပါသည်။ TelegramID | Reseller_Name | Tokens အတိုင်း ပို့ပေးပါ။")
         
     r_id = int(parts[0])
     r_name = parts[1]
     r_tokens = int(parts[2])
     
+    if not r_name:
+        return bot.reply_to(message, "❌ Reseller နာမည် ထည့်သွင်းရန် ကျန်ရှိနေပါသည်။")
+    
     try:
+        pull_data_from_github()
+        
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, token_balance) VALUES (?, ?, 'reseller', ?)", (r_id, r_name, r_tokens))
         conn.commit()
         conn.close()
         
-        bot.reply_to(message, f"✅ **Reseller အကောင့်ကို အောင်မြင်စွာ ဖန်တီးပြီးပါပြီ!**\n\n🆔 ID: `{r_id}`\n👤 နာမည်: **{r_name}**\n🪙 ပေးအပ်ထားသော Token: `{r_tokens}` Tokens", parse_mode="Markdown")
+        success_msg = (
+            f"✅ <b>Reseller အကောင့်ကို အောင်မြင်စွာ ဖန်တီးပြီးပါပြီ!</b>\n\n"
+            f"🆔 ID: {r_id}\n"
+            f"👤 နာမည်: <b>{r_name}</b>\n"
+            f"🪙 ပေးအပ်ထားသော Token: {r_tokens} Tokens"
+        )
+        bot.reply_to(message, success_msg, parse_mode="HTML")
         sync_resellers_to_github()
     except Exception as e:
         bot.reply_to(message, f"❌ Error: {str(e)}")
@@ -742,9 +746,9 @@ def admin_view_resellers(message):
     rows = cursor.fetchall()
     conn.close()
     if not rows: return bot.reply_to(message, "📭 Reseller စာရင်း လုံးဝမရှိသေးပါ။")
-    res = "👥 **Reseller စာရင်းနှင့် လက်ကျန် Token များ:**\n\n"
-    for r in rows: res += f"🆔 `{r[0]}` | 👤 **{r[1]}** (လက်ကျန်: `{r[2]} Tokens`)\n"
-    bot.reply_to(message, res, parse_mode="Markdown")
+    res = "👥 <b>Reseller စာရင်းနှင့် လက်ကျန် Token များ:</b>\n\n"
+    for r in rows: res += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b> (လက်ကျန်: <code>{r[2]} Tokens</code>)\n"
+    bot.reply_to(message, res, parse_mode="HTML")
 
 def admin_delete_reseller_menu(message):
     if not is_admin(message.from_user.id): return
@@ -755,11 +759,11 @@ def admin_delete_reseller_menu(message):
     rows = cursor.fetchall()
     conn.close()
     if not rows: return bot.reply_to(message, "📭 ဖျက်ရန် Reseller မရှိပါ။")
-    res_list = "👥 **လက်ရှိ Reseller စာရင်းများ:**\n\n"
-    for r in rows: res_list += f"🆔 `{r[0]}` | 👤 **{r[1]}**\n"
-    res_list += "\n✍️ **ဖျက်ထုတ်လိုသော Reseller ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-**"
+    res_list = "👥 <b>လက်ရှိ Reseller စာရင်းများ:</b>\n\n"
+    for r in rows: res_list += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b>\n"
+    res_list += "\n✍️ <b>ဖျက်ထုတ်လိုသော Reseller ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-</b>"
     user_states[message.from_user.id] = 'w_del_reseller'
-    bot.send_message(message.chat.id, res_list, parse_mode="Markdown")
+    bot.send_message(message.chat.id, res_list, parse_mode="HTML")
 
 @bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_del_reseller')
 def process_delete_reseller_by_id(message):
@@ -778,7 +782,7 @@ def process_delete_reseller_by_id(message):
     conn.commit()
     conn.close()
     sync_resellers_to_github()
-    bot.reply_to(message, f"✅ Reseller: **{row[0]}** ကို ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode="Markdown")
+    bot.reply_to(message, f"✅ Reseller: <b>{row[0]}</b> ကို ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode="HTML")
     user_states[user_id] = None
 
 def admin_view_all_keys(message):
@@ -790,9 +794,9 @@ def admin_view_all_keys(message):
     rows = cursor.fetchall()
     conn.close()
     if not rows: return bot.reply_to(message, "📭 VIP အကောင့် မရှိသေးပါ။")
-    res = f"🌐 **VIP အသုံးပြုသူ အားလုံးစာရင်း ({len(rows)} ဦး):**\n\n"
-    for r in rows: res += f"🆔 `{r[0]}` | 👤 `{r[1]}` | {r[2]} {r[3]}\n"
-    bot.reply_to(message, res, parse_mode="Markdown")
+    res = f"🌐 <b>VIP အသုံးပြုသူ အားလုံးစာရင်း ({len(rows)} ဦး):</b>\n\n"
+    for r in rows: res += f"🆔 <code>{r[0]}</code> | 👤 <code>{r[1]}</code> | {r[2]} {r[3]}\n"
+    bot.reply_to(message, res, parse_mode="HTML")
 
 # ==========================================
 # 7. WEBHOOK INITIALIZATION & RUN ENGINE
