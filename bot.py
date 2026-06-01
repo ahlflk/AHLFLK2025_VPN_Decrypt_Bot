@@ -1,5 +1,5 @@
 # # All-in-One Safe Decryptor & Telegram VIP Management Bot (1 Day = 1 Token System)
-# Py By @AHLFLK2025 (Optimized with Dynamic Token Deduction)
+# Py By @AHLFLK2025 (Optimized with Dynamic Token Deduction & Anti-Loop Interceptor)
 import os
 import re
 import json
@@ -388,11 +388,14 @@ def get_main_keyboard(user_id):
 # 6. TELEGRAM BOT HANDLERS & EVENTS
 # ==========================================
 
-# Fixed Interceptor: Only reset state if the incoming message is a main menu button AND the user is NOT inside an active state input flow.
-@bot.message_handler(func=lambda msg: msg.text in MENU_BUTTONS and user_states.get(msg.from_user.id) not in ['w_edit_vip_id', 'w_edit_vip_duration', 'w_del_vip', 'w_vip', 'w_r_id', 'w_r_name', 'w_r_limit', 'w_del_reseller'])
+# 🛡️ ANTI-LOOP INTERCEPTOR (အဓိကပြင်ဆင်ချက်)
+# User က ဘယ် flow ထဲရောက်ရောက် မီနူးခလုတ်တွေကို လာနှိပ်လိုက်ရင် လက်ရှိ လုပ်လက်စ flow (State) အားလုံးကို အရင် ဖျက်သိမ်း (Reset) ပေးမည့်စနစ်
+@bot.message_handler(func=lambda msg: msg.text in MENU_BUTTONS)
 def handle_menu_buttons(message):
     user_id = message.from_user.id
-    user_states[user_id] = None # Safe to reset here
+    user_states[user_id] = None  # လက်ရှိပိတ်မိနေတဲ့ flow အားလုံးကို အတင်းအဓမ္မ Reset ချပေးသည်
+    if user_id in reseller_temp_data: 
+        del reseller_temp_data[user_id] # ယာယီသိမ်းထားတဲ့ data တွေကိုပါ အကုန်ရှင်းထုတ်သည်
     
     if message.text == "🌐 VPN Decrypt List":
         display_decrypt_list(message, user_id, message.chat.id)
@@ -564,7 +567,7 @@ def admin_reseller_edit_vip_menu(message):
     for r in rows: 
         res_list += f"🆔 `{r[0]}` | 👤 *{r[1]}* ({r[2]}{r[3]})\n"
     res_list += "--------------------------------------\n\n"
-    res_list += "✍️ *¼ သက်တမ်းပြင်ဆင်/တိုးမြှင့်လိုသော VIP ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-*"
+    res_list += "✍️ *သက်တမ်းပြင်ဆင်/တိုးမြှင့်လိုသော VIP ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-*"
     
     user_states[user_id] = 'w_edit_vip_id'
     bot.send_message(message.chat.id, res_list, parse_mode="Markdown")
@@ -638,13 +641,13 @@ def admin_reseller_delete_vip_menu(message):
     
     if not rows: return bot.reply_to(message, "📭 ဖျက်ရန် VIP မရှိပါ။")
     
-    res_list = "🗑 *¼ လက်ရှိ VIP အသုံးပြုသူ စာရင်းများ*\n\n"
+    res_list = "🗑 *လက်ရှိ VIP အသုံးပြုသူ စာရင်းများ*\n\n"
     res_list += "💡 _(Telegram ID ကို နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူနိုင်ပါသည်)_\n"
     res_list += "--------------------------------------\n"
     for r in rows: 
         res_list += f"🆔 `{r[0]}` | 👤 *{r[1]}*\n"
     res_list += "--------------------------------------\n\n"
-    res_list += "✍️ *¼ ဖျက်ထုတ်လိုသော VIP ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-*"
+    res_list += "✍️ *ဖျက်ထုတ်လိုသော VIP ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-*"
     
     user_states[user_id] = 'w_del_vip'
     bot.send_message(message.chat.id, res_list, parse_mode="Markdown")
@@ -763,7 +766,7 @@ def process_delete_reseller_by_id(message):
     conn.commit()
     conn.close()
     sync_resellers_to_github()
-    bot.reply_to(message, f"✅ Reseller: **{row[0]}** ကို ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode="Markdown")
+    bot.reply_to(message, f"✅ Reseller: **{row[0]}** ကို ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode=\"Markdown\")
     user_states[user_id] = None
 
 def admin_view_all_keys(message):
