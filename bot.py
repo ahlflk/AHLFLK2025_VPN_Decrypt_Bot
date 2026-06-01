@@ -1,4 +1,4 @@
-# All-in-One Safe Decryptor & Telegram VIP Management Bot (1 Day = 1 Token System)
+# # All-in-One Safe Decryptor & Telegram VIP Management Bot (1 Day = 1 Token System)
 # Py By @AHLFLK2025 (Optimized with Dynamic Token Deduction)
 import os
 import re
@@ -19,7 +19,7 @@ from telebot import types
 # ==========================================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = 5376544115
-DEFAULT_CREDITS = 100  # Reseller အသစ်ဆောက်ရင် ပေးမယ့် အခြေခံ Token (ဥပမာ ရက် ၁၀၀ စာ)
+DEFAULT_CREDITS = 100  # Reseller အသစ်ဆောက်ရင် ပေးမယ့် အခြေခံ Token
 
 GITHUB_TOKEN = os.getenv("GH_TOKEN") 
 REPO_OWNER = "ahlflk" 
@@ -211,7 +211,7 @@ def init_db():
         role TEXT,
         token_balance INTEGER DEFAULT 0
     )''')
-    cursor.execute("INSERT OR IGNORE INTO users (tg_id, username, role, token_balance) VALUES (?, ?, ?, ?)", (ADMIN_ID, 'Main_Admin', 'admin', 999999))
+    cursor.execute("INSERT OR IGNORE INTO users (tg_id, username, role, token_balance) VALUES (?, ?, ?, ?)", (ADMIN_ID, 'Main_Admin', 'admin', 9999999))
     conn.commit()
     conn.close()
 
@@ -304,9 +304,7 @@ def sync_resellers_to_github():
         requests.put(url, headers=headers, json=payload)
     except Exception as e: print(f"[-] Reseller Sync Error: {str(e)}")
 
-# --- Helper Functions for Token Math ---
 def calculate_days(unit, duration_type):
-    """ unit က တန်ဖိုးဖြစ်ပြီး duration_type က d သို့မဟုတ် m ဖြစ်သည် """
     if duration_type.lower() == 'm':
         return int(unit) * 30
     return int(unit)
@@ -353,7 +351,7 @@ def check_vip_status(user_id):
     except: return False, "Error Check"
 
 def get_reseller_tokens(user_id):
-    if user_id == ADMIN_ID: return 999999
+    if user_id == ADMIN_ID: return 9999999
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("SELECT token_balance FROM users WHERE tg_id = ?", (user_id,))
@@ -362,7 +360,6 @@ def get_reseller_tokens(user_id):
     return res[0] if res else 0
 
 def deduct_reseller_tokens_by_days(user_id, required_tokens):
-    """ 1 Day = 1 Token နှုန်းဖြင့် လိုအပ်သော Token အရေအတွက်ကို နှုတ်ယူသည် """
     if user_id == ADMIN_ID: return True
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -390,6 +387,34 @@ def get_main_keyboard(user_id):
 # ==========================================
 # 6. TELEGRAM BOT HANDLERS & EVENTS
 # ==========================================
+
+# Global Menu Interceptor to clear states instantly when any menu button is clicked
+@bot.message_handler(func=lambda msg: msg.text in MENU_BUTTONS)
+def handle_menu_buttons(message):
+    user_id = message.from_user.id
+    user_states[user_id] = None # Reset previous states
+    
+    if message.text == "🌐 VPN Decrypt List":
+        display_decrypt_list(message, user_id, message.chat.id)
+    elif message.text == "➕ Add VIP User":
+        cmd_add_vip(message)
+    elif message.text == "🔑 My VIP Users":
+        cmd_my_vips(message)
+    elif message.text == "💰 My Balance":
+        cmd_my_balance(message)
+    elif message.text == "✏️ Edit VIP":
+        admin_reseller_edit_vip_menu(message)
+    elif message.text == "🗑 Delete VIP":
+        admin_reseller_delete_vip_menu(message)
+    elif message.text == "👤 Create Reseller":
+        admin_create_reseller(message)
+    elif message.text == "📊 Reseller List":
+        admin_view_resellers(message)
+    elif message.text == "🗑 Delete Reseller":
+        admin_delete_reseller_menu(message)
+    elif message.text == "🌐 View All VIPs":
+        admin_view_all_keys(message)
+
 def display_decrypt_list(message_or_call, user_id, chat_id):
     pull_data_from_github()
     is_vip, exp_status = check_vip_status(user_id)
@@ -431,12 +456,6 @@ def send_welcome(message):
     user_states[user_id] = None 
     display_decrypt_list(message, user_id, message.chat.id)
 
-@bot.message_handler(func=lambda msg: msg.text == "🌐 VPN Decrypt List")
-def handle_decrypt_list_button(message):
-    user_id = message.from_user.id
-    user_states[user_id] = None 
-    display_decrypt_list(message, user_id, message.chat.id)
-
 @bot.callback_query_handler(func=lambda call: call.data.startswith('dec_'))
 def handle_decrypt_callback(call):
     chat_id = call.message.chat.id
@@ -465,8 +484,7 @@ def handle_decrypt_callback(call):
     except Exception as e:
         bot.send_message(chat_id, f"❌ **Error:** `{str(e)}`", parse_mode="Markdown")
 
-# ----------------- VIP MANAGEMENT SYSTEMS (1 Day = 1 Token) -----------------
-@bot.message_handler(func=lambda msg: msg.text == "➕ Add VIP User")
+# ----------------- VIP MANAGEMENT SYSTEMS -----------------
 def cmd_add_vip(message):
     user_id = message.from_user.id
     if not is_reseller(user_id): return
@@ -476,7 +494,7 @@ def cmd_add_vip(message):
     user_states[user_id] = 'w_vip'
     bot.reply_to(message, f"✍️ VIP အသစ်ဆောက်ရန် ပို့ပေးပါ-\n🪙 နှုန်းထား: `1 Day = 1 Token` (လက်ကျန်: `{current_tokens}` Tokens)\n\n`TelegramID | VIP_Name | Unit | Duration`\n\n💡 ဥပမာ- `0123456789 | AHLFLK2025 | 30 | d` (ရက် ၃၀ အတွက် 30 Tokens နှုတ်ပါမည်)", parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_vip' and msg.text not in MENU_BUTTONS)
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_vip')
 def process_vip_add(message):
     user_id = message.from_user.id
     parts = [p.strip() for p in message.text.split("|")]
@@ -505,7 +523,6 @@ def process_vip_add(message):
     except Exception as e: bot.reply_to(message, f"❌ Error: {str(e)}")
     user_states[user_id] = None
 
-@bot.message_handler(func=lambda msg: msg.text == "🔑 My VIP Users")
 def cmd_my_vips(message):
     if not is_reseller(message.from_user.id): return
     pull_data_from_github()
@@ -519,16 +536,13 @@ def cmd_my_vips(message):
     for r in rows: res += f"• ID: `{r[0]}` -> နာမည်: `{r[1]}` (သက်တမ်း: `{r[2]} {r[3]}`)\n"
     bot.reply_to(message, res, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: msg.text == "💰 My Balance")
 def cmd_my_balance(message):
     user_id = message.from_user.id
     if not is_reseller(user_id): return
     pull_data_from_github()
     tokens = get_reseller_tokens(user_id)
-    bot.reply_to(message, f"💰 **လက်ကျန် Token စာရင်း (1 Day = 1 Token):**\n\n👤 Reseller: {message.from_user.first_name}\n📊 Credit Balance: `{tokens}` Tokens (ရက်ပေါင်း {tokens} စာ ဆောက်နိုင်သည်)", parse_mode="Markdown")
+    bot.reply_to(message, f"💰 **လက်ကျန် Token စာရင်း (1 Day = 1 Token):**\n\n👤 Reseller: {message.from_user.first_name}\n📊 Credit Balance: {tokens} Tokens (ရက်ပေါင်း {tokens} စာ ဆောက်နိုင်သည်)", reply_markup=get_main_keyboard(user_id))
 
-# [ပြင်ဆင်ချက်] Edit VIP တွင် သက်တမ်းတိုးသည့်အလျောက် Token ထပ်မံနှုတ်ယူမည်
-@bot.message_handler(func=lambda msg: msg.text == "✏️ Edit VIP")
 def admin_reseller_edit_vip_menu(message):
     user_id = message.from_user.id
     if not is_reseller(user_id): return
@@ -549,7 +563,7 @@ def admin_reseller_edit_vip_menu(message):
     user_states[user_id] = 'w_edit_vip_id'
     bot.send_message(message.chat.id, res_list, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_vip_id' and msg.text not in MENU_BUTTONS)
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_vip_id')
 def process_edit_vip_id(message):
     user_id = message.from_user.id
     target_id_str = message.text.strip()
@@ -570,7 +584,7 @@ def process_edit_vip_id(message):
     user_states[user_id] = 'w_edit_vip_duration'
     bot.reply_to(message, f"👤 အကောင့်: **{row[0]}**\n\n✍️ ပြောင်းလဲသတ်မှတ်လိုသော **သက်တမ်းအသစ်** ကို `Unit | Duration` ပုံစံဖြင့် ပို့ပေးပါ-\n(ဥပမာ- `60 | d` ဟု ထည့်ပါက သက်တမ်း ရက် ၆၀ သို့ ပြောင်းသွားပြီး လိုအပ်သော Token ကို ထပ်မံနှုတ်ယူပါမည်။)")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_vip_duration' and msg.text not in MENU_BUTTONS)
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_vip_duration')
 def process_edit_vip_duration(message):
     user_id = message.from_user.id
     temp = reseller_temp_data.get(user_id)
@@ -603,7 +617,6 @@ def process_edit_vip_duration(message):
     user_states[user_id] = None
     if user_id in reseller_temp_data: del reseller_temp_data[user_id]
 
-@bot.message_handler(func=lambda msg: msg.text == "🗑 Delete VIP")
 def admin_reseller_delete_vip_menu(message):
     user_id = message.from_user.id
     if not is_reseller(user_id): return
@@ -623,7 +636,7 @@ def admin_reseller_delete_vip_menu(message):
     user_states[user_id] = 'w_del_vip'
     bot.send_message(message.chat.id, res_list, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_del_vip' and msg.text not in MENU_BUTTONS)
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_del_vip')
 def process_delete_vip_by_id(message):
     user_id = message.from_user.id
     id_to_del = message.text.strip()
@@ -647,13 +660,12 @@ def process_delete_vip_by_id(message):
     user_states[user_id] = None
 
 # ----------------- ADMIN COMMANDS (RESELLERS) -----------------
-@bot.message_handler(func=lambda msg: msg.text == "👤 Create Reseller")
 def admin_create_reseller(message):
     if not is_admin(message.from_user.id): return
     user_states[message.from_user.id] = 'w_r_id'
     bot.reply_to(message, "👤 Reseller ရဲ့ **Telegram User ID** ကို ပို့ပေးပါ-")
 
-@bot.message_handler(func=lambda msg: user_states.get(message.from_user.id) == 'w_r_id' and msg.text not in MENU_BUTTONS)
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_id')
 def process_r_id(message):
     admin_id = message.from_user.id
     try:
@@ -665,7 +677,7 @@ def process_r_id(message):
         bot.reply_to(message, "❌ ID မှားယွင်းနေပါသည်။")
         user_states[admin_id] = None
 
-@bot.message_handler(func=lambda msg: user_states.get(message.from_user.id) == 'w_r_name' and msg.text not in MENU_BUTTONS)
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_name')
 def process_r_name(message):
     admin_id = message.from_user.id
     if admin_id not in reseller_temp_data: return
@@ -673,7 +685,7 @@ def process_r_name(message):
     user_states[admin_id] = 'w_r_limit'
     bot.reply_to(message, "🪙 ထည့်သွင်းပေးမည့် **Token အရေအတွက် (1 Token = 1 Day)** ကို ပို့ပေးပါ-")
 
-@bot.message_handler(func=lambda msg: user_states.get(message.from_user.id) == 'w_r_limit' and msg.text not in MENU_BUTTONS)
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_r_limit')
 def process_r_limit(message):
     admin_id = message.from_user.id
     if admin_id not in reseller_temp_data: return
@@ -693,7 +705,6 @@ def process_r_limit(message):
     user_states[admin_id] = None
     if admin_id in reseller_temp_data: del reseller_temp_data[admin_id]
 
-@bot.message_handler(func=lambda msg: msg.text == "📊 Reseller List")
 def admin_view_resellers(message):
     if not is_admin(message.from_user.id): return
     pull_data_from_github()
@@ -707,7 +718,6 @@ def admin_view_resellers(message):
     for r in rows: res += f"🆔 `{r[0]}` | 👤 **{r[1]}** (လက်ကျန်: `{r[2]} Tokens`)\n"
     bot.reply_to(message, res, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: msg.text == "🗑 Delete Reseller")
 def admin_delete_reseller_menu(message):
     if not is_admin(message.from_user.id): return
     pull_data_from_github()
@@ -723,7 +733,7 @@ def admin_delete_reseller_menu(message):
     user_states[message.from_user.id] = 'w_del_reseller'
     bot.send_message(message.chat.id, res_list, parse_mode="Markdown")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_del_reseller' and msg.text not in MENU_BUTTONS)
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_del_reseller')
 def process_delete_reseller_by_id(message):
     user_id = message.from_user.id
     id_to_del = message.text.strip()
@@ -743,7 +753,6 @@ def process_delete_reseller_by_id(message):
     bot.reply_to(message, f"✅ Reseller: **{row[0]}** ကို ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode="Markdown")
     user_states[user_id] = None
 
-@bot.message_handler(func=lambda msg: msg.text == "🌐 View All VIPs")
 def admin_view_all_keys(message):
     if not is_admin(message.from_user.id): return
     pull_data_from_github()
