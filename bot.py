@@ -503,7 +503,7 @@ def display_decrypt_list(message_or_call, user_id, chat_id):
         return
 
     configs = get_vpn_configs()
-    welcome_text = f"👋 <b>{bot_name} မှ ကြိုဆိုပါတယ်!</b>\n\n⏳ <b>သင့်သက်တမ်းကုန်မည့်ရက်:</b> <code>{exp_status}</code>\n\nDecrypt လုပ်ချင်တဲ့ VPN Config အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ-"
+    welcome_text = f"👋 <b>{bot_name} မှ\nနွေးထွေးစွာ ကြိုဆိုပါတယ်!</b>\n\n⏳ <b>သင့်သက်တမ်းကုန်မည့်ရက်:</b> <code>{exp_status}</code>\n\n🛠️ Decrypt လုပ်ချင်တဲ့ VPN Config\nအမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ-"
     
     markup = types.InlineKeyboardMarkup(row_width=2)
     buttons = []
@@ -569,7 +569,7 @@ def cmd_add_vip(message):
     user_states[user_id] = 'w_vip'
     
     msg_text = (
-        f"✍️ <b>VIP အသစ်ဆောက်ရန် ပုံစံတကျ စာသားပေးပို့ပါ-</b>\n"
+        f"✍️ <b>VIP အသစ်ဆောက်ရန် ပုံစံစာသားပေးပို့ပါ-</b>\n"
         f"🪙 နှုန်းထား: <code>1 Day = 1 Token</code> (လက်ကျန်: <code>{current_tokens}</code> Tokens)\n\n"
         f"✍️ Format အတိုင်း အောက်ပါစာသားကို ကူးယူပြင်ဆင်ပြီး ပို့နိုင်ပါသည်-\n"
         f"<code>TelegramID | VIP_Name | Unit | Duration</code>\n\n"
