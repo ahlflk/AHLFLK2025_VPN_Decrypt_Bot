@@ -1,4 +1,4 @@
-# # All-in-One Safe Decryptor & Telegram VIP Management Bot (With Reseller Expiry Date)
+# # All-in-One Safe Decryptor & Telegram VIP Management Bot (With Reseller Edit & Expiry Date)
 # Py By @AHLFLK2025 (Fully Fixed Reseller Bypass Leak - Token & Date Dual Protection)
 import os
 import re
@@ -37,7 +37,8 @@ DB_FILE = os.path.join(BASE_DIR, "keys_management.db")
 
 user_states = {}
 reseller_temp_data = {}
-MENU_BUTTONS = ["🌐 VPN Decrypt List", "➕ Add VIP User", "🔑 My VIP Users", "✏️ Edit VIP", "🗑 Delete VIP", "👤 Create Reseller", "📊 Reseller List", "🗑 Delete Reseller", "🌐 View All VIPs", "💰 My Balance"]
+# 💡 MENU BUTTONS တွင် "✏️ Edit Reseller" အသစ်ဖြည့်စွက်ထားသည်
+MENU_BUTTONS = ["🌐 VPN Decrypt List", "➕ Add VIP User", "🔑 My VIP Users", "✏️ Edit VIP", "🗑 Delete VIP", "👤 Create Reseller", "📊 Reseller List", "✏️ Edit Reseller", "🗑 Delete Reseller", "🌐 View All VIPs", "💰 My Balance"]
 
 # ==========================================
 # 2. FLASK SERVER & WEBHOOK CONTROLLER
@@ -191,7 +192,7 @@ def get_vpn_configs():
     except: return []
 
 # ==========================================
-# 5. DATABASE & GITHUB SYNC (WITH DATE FIELD)
+# 5. DATABASE & GITHUB SYNC
 # ==========================================
 def init_db():
     conn = sqlite3.connect(DB_FILE)
@@ -330,16 +331,12 @@ def is_reseller(user_id):
     conn.close()
     return res is not None
 
-# =====================================================================
-# 🛠 ပြင်ဆင်ပြီးစနစ်- Reseller Status ကို Date တစ်ခုတည်းဖြင့်သာ စစ်ဆေးခြင်း
-# =====================================================================
 def check_vip_status(user_id):
     if user_id == ADMIN_ID: return True, "Unlimited (Admin)"
     
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
-    # ၁။ Reseller ဖြစ်နေရင် အရင်စစ်မယ်
     cursor.execute("SELECT role, token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
     user_row = cursor.fetchone()
     if user_row and user_row[0] == 'reseller':
@@ -348,14 +345,13 @@ def check_vip_status(user_id):
         
         try:
             expire_date = datetime.strptime(exp_date_str, "%Y-%m-%d")
-            # 💡 [ပြင်ဆင်ချက်] Token 0 ဖြစ်ခြင်းကို တိုက်မစစ်တော့ဘဲ Date သက်တမ်းတစ်ခုတည်းကိုသာ စစ်ဆေးပါသည်
+            # 💡 Token 0 ကိုမစစ်ဘဲ Date တစ်ခုတည်းဖြင့်သာ VIP function ကို လော့ခ်ချစစ်ဆေးသည်[span_2](start_span)[span_2](end_span)
             if datetime.now() > expire_date:
                 return False, "Expired (Date Out)"
             return True, f"Reseller Staff ({exp_date_str})"
         except:
             return False, "Date Error"
 
-    # ၂။ ရိုးရိုး VIP User ဖြစ်ရင် စစ်မယ်
     cursor.execute("SELECT unit_val, duration_type, created_at FROM auth_keys WHERE target_id = ?", (str(user_id),))
     row = cursor.fetchone()
     conn.close()
@@ -383,7 +379,6 @@ def get_reseller_tokens(user_id):
     conn.close()
     return res[0] if res else 0
 
-# 💡 [ပြင်ဆင်ချက်] VIP ဆောက်ရာတွင် Token နှုတ်ယူမှုကို ခွင့်ပြုသော်လည်း သက်တမ်းကုန်ဆုံးမှုကို Date တစ်ခုတည်းသာ ကြည့်ပါသည်
 def deduct_reseller_tokens_by_days(user_id, required_tokens):
     if user_id == ADMIN_ID: return True
     
@@ -397,7 +392,7 @@ def deduct_reseller_tokens_by_days(user_id, required_tokens):
             expire_date = datetime.strptime(exp_date_str, "%Y-%m-%d")
             if datetime.now() > expire_date:
                 conn.close()
-                return False # ရက်စွဲသက်တမ်းကုန်နေရင် ခွင့်မပြုပါ
+                return False 
         except: 
             conn.close()
             return False
@@ -421,8 +416,11 @@ def get_main_keyboard(user_id):
     elif is_reseller(user_id):
         markup.add("💰 My Balance") 
         
+    # 💡 Admin Menu တွင် "✏️ Edit Reseller" ခလုတ်ကို နေရာချပေးထားသည်
     if is_admin(user_id):
-        markup.add("👤 Create Reseller", "📊 Reseller List", "🗑 Delete Reseller", "🌐 View All VIPs")
+        markup.add("👤 Create Reseller", "📊 Reseller List")
+        markup.add("✏️ Edit Reseller", "🗑 Delete Reseller")
+        markup.add("🌐 View All VIPs")
     return markup
 
 # ==========================================
@@ -454,6 +452,8 @@ def handle_menu_buttons(message):
         admin_create_reseller(message)
     elif message.text == "📊 Reseller List":
         admin_view_resellers(message)
+    elif message.text == "✏️ Edit Reseller":
+        admin_edit_reseller_menu(message)
     elif message.text == "🗑 Delete Reseller":
         admin_delete_reseller_menu(message)
     elif message.text == "🌐 View All VIPs":
@@ -607,7 +607,7 @@ def cmd_my_vips(message):
     rows = cursor.fetchall()
     conn.close()
     if not rows: return bot.reply_to(message, "📭 သင်ထည့်သွင်းထားသော VIP အကောင့်မရှိသေးပါ။")
-    res = "<b>👥 ...သင်ထည့်ထားသော VIP အသုံးပြုသူများ...</b>\n\n"
+    res = "👥 <b>...သင်ထည့်ထားသော VIP အသုံးပြုသူများ...</b>\n\n"
     for r in rows: res += f"• ID: <code>{r[0]}</code> -> နာမည်: <b>{r[1]}</b> (သက်တမ်း: {r[2]} {r[3]})\n"
     bot.reply_to(message, res, parse_mode="HTML")
 
@@ -750,7 +750,7 @@ def process_delete_vip_by_id(message):
     bot.reply_to(message, f"✅ VIP User: <b>{row[0]}</b> ကို ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode="HTML")
     user_states[user_id] = None
 
-# ----------------- 👤 CREATE RESELLER (WITH DATE INPUT FORMAT) -----------------
+# ----------------- 👤 CREATE RESELLER -----------------
 def admin_create_reseller(message):
     if not is_admin(message.from_user.id): return
     user_states[message.from_user.id] = 'w_one_line_reseller'
@@ -834,6 +834,86 @@ def admin_view_resellers(message):
     for r in rows: res += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b>\n🪙 {r[2]} Tokens | ⏳ Exp: <code>{r[3]}</code>\n\n"
     bot.reply_to(message, res, parse_mode="HTML")
 
+# ----------------- ✏️ EDIT RESELLER (NEW FUNCTION) -----------------
+def admin_edit_reseller_menu(message):
+    if not is_admin(message.from_user.id): return
+    pull_data_from_github()
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT tg_id, username, token_balance, expire_date FROM users WHERE role = 'reseller' AND tg_id != ?", (ADMIN_ID,))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    if not rows: return bot.reply_to(message, "📭 ပြင်ဆင်ရန် Reseller လုံးဝမရှိသေးပါ။")
+    
+    res_list = "📝 <b>...လက်ရှိ Reseller စာရင်းများ...</b>\n\n"
+    for r in rows: res_list += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b> (🪙 {r[2]} | ⏳ {r[3]})\n"
+    res_list += "\n✍️ <b>ပြင်ဆင်လိုသော Reseller ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-</b>"
+    
+    user_states[message.from_user.id] = 'w_edit_reseller_id'
+    bot.send_message(message.chat.id, res_list, parse_mode="HTML")
+
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_reseller_id')
+def process_edit_reseller_id(message):
+    admin_id = message.from_user.id
+    target_id_str = message.text.strip()
+    if not target_id_str.isdigit(): return bot.reply_to(message, "❌ Telegram ID အမှန်ကို ရိုက်ပို့ပေးပါ။")
+        
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT username, token_balance, expire_date FROM users WHERE tg_id = ? AND role = 'reseller'", (int(target_id_str),))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if not row: return bot.reply_to(message, "❌ ဤ ID ဖြင့် Reseller အား ရှာမတွေ့ပါ။")
+        
+    reseller_temp_data[admin_id] = {'target_reseller_id': int(target_id_str), 'old_name': row[0]}
+    user_states[admin_id] = 'w_edit_reseller_data'
+    
+    edit_msg = (
+        f"👤 ပြင်ဆင်မည့်သူ: <b>{row[0]}</b>\n\n"
+        f"✍️ <b>အချက်အလက်အသစ်များကို အောက်ပါ Format အတိုင်း ပြင်ဆင်ပို့ပေးပါ-</b>\n"
+        f"<code>Reseller_Name | New_Tokens | ExpireDate(YYYY-MM-DD)</code>\n\n"
+        f"👇 <b>Copy ကူးယူပြင်ဆင်ရန် နမူနာ-</b>\n"
+        f"<code>{row[0]} | {row[1]} | {row[2]}</code>"
+    )
+    bot.reply_to(message, edit_msg, parse_mode="HTML")
+
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_reseller_data')
+def process_edit_reseller_data(message):
+    admin_id = message.from_user.id
+    temp = reseller_temp_data.get(admin_id)
+    if not temp: return
+        
+    parts = [p.strip() for p in message.text.split("|")]
+    if len(parts) != 3 or not parts[1].isdigit():
+        return bot.reply_to(message, "❌ Format မှားယွင်းနေပါသည်။ Name | Tokens | YYYY-MM-DD ဟု ပို့ပေးပါ။")
+        
+    new_name = parts[0]
+    new_tokens = int(parts[1])
+    new_date = parts[2]
+    
+    if not re.match(r'^\d{4}-\d{2}-\d{2}$', new_date):
+        return bot.reply_to(message, "❌ ရက်စွဲပုံစံ မှားနေပါသည်။ YYYY-MM-DD (ဥပမာ- 2026-07-02) အတိုင်း ရေးပေးပါ။")
+        
+    pull_data_from_github()
+    
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET username = ?, token_balance = ?, expire_date = ? WHERE tg_id = ?", (new_name, new_tokens, new_date, temp['target_reseller_id']))
+        conn.commit()
+        conn.close()
+        
+        sync_resellers_to_github()
+        bot.reply_to(message, f"✅ Reseller: <b>{temp['old_name']}</b> ၏ အချက်အလက်များအား အောင်မြင်စွာ အပ်ဒိတ်လုပ်ပြီးပါပြီ။", parse_mode="HTML")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error: {str(e)}")
+    
+    user_states[admin_id] = None
+    if admin_id in reseller_temp_data: del reseller_temp_data[admin_id]
+
+# ----------------- 🗑 DELETE RESELLER -----------------
 def admin_delete_reseller_menu(message):
     if not is_admin(message.from_user.id): return
     pull_data_from_github()
