@@ -408,19 +408,33 @@ def deduct_reseller_tokens_by_days(user_id, required_tokens):
 
 def get_main_keyboard(user_id):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add(types.KeyboardButton("🌐 VPN Decrypt List"))
+    
+    # Row 1: VPN Decrypt List (Full Width)
+    markup.row(types.KeyboardButton("🌐 VPN Decrypt List"))
     
     is_vip, _ = check_vip_status(user_id)
+    
+    # Reseller Staff သို့မဟုတ် Admin ဖြစ်လျှင် VIP Control Buttons ပြမည်
     if is_reseller(user_id) and (is_vip or user_id == ADMIN_ID):
-        markup.add("➕ Add VIP User", "🔑 My VIP Users", "✏️ Edit VIP", "🗑 Delete VIP", "💰 My Balance")
-    elif is_reseller(user_id):
-        markup.add("💰 My Balance") 
+        markup.row(types.KeyboardButton("➕ Add VIP User"), types.KeyboardButton("🔑 My VIP Users"))
+        markup.row(types.KeyboardButton("✏️ Edit VIP"), types.KeyboardButton("🗑 Delete VIP"))
         
-    # 💡 Admin Menu တွင် "✏️ Edit Reseller" ခလုတ်ကို နေရာချပေးထားသည်
+        # Admin ဖြစ်ခဲ့လျှင် Balance နှင့် View All VIPs ကို ဘေးတိုက်တွဲပြမည်
+        if is_admin(user_id):
+            markup.row(types.KeyboardButton("💰 My Balance"), types.KeyboardButton("🌐 View All VIPs"))
+        else:
+            # ရိုးရိုး Reseller ဆိုလျှင် Balance ကို အပြည့်ပြမည်
+            markup.row(types.KeyboardButton("💰 My Balance"))
+            
+    elif is_reseller(user_id):
+        # သက်တမ်းကုန်နေသော Reseller ဆိုလျှင် Balance တစ်ခုပဲပြမည်
+        markup.row(types.KeyboardButton("💰 My Balance")) 
+        
+    # Admin System Buttons (အတွဲလိုက် ဘေးတိုက်စီပေးထားသည်)
     if is_admin(user_id):
-        markup.add("👤 Create Reseller", "📊 Reseller List")
-        markup.add("✏️ Edit Reseller", "🗑 Delete Reseller")
-        markup.add("🌐 View All VIPs")
+        markup.row(types.KeyboardButton("👤 Create Reseller"), types.KeyboardButton("📊 Reseller List"))
+        markup.row(types.KeyboardButton("✏️ Edit Reseller"), types.KeyboardButton("🗑 Delete Reseller"))
+        
     return markup
 
 # ==========================================
