@@ -553,7 +553,7 @@ def cmd_add_vip(message):
     msg_text = (
         f"✍️ <b>VIP အသစ်ဆောက်ရန် ပုံစံတကျ စာသားပေးပို့ပါ-</b>\n"
         f"🪙 နှုန်းထား: <code>1 Day = 1 Token</code> (လက်ကျန်: <code>{current_tokens}</code> Tokens)\n\n"
-        f"Format အတိုင်း အောက်ပါစာသားကို ကူးယူပြင်ဆင်ပြီး ပို့နိုင်ပါသည်-\n"
+        f"✍️ Format အတိုင်း အောက်ပါစာသားကို ကူးယူပြင်ဆင်ပြီး ပို့နိုင်ပါသည်-\n"
         f"<code>TelegramID | VIP_Name | Unit | Duration</code>\n\n"
         f"👇 <b>နမူနာ ကို နှိပ်ပြီး Copy ယူနိုင်သည်-</b>\n"
         f"<code>1234567890 | AHLFLK2025 | 30 | d</code>"
