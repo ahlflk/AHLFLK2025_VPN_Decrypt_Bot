@@ -1,5 +1,9 @@
 # # All-in-One Safe Decryptor & Telegram VIP Management Bot (With Reseller Edit & Expiry Date)
 # Py By @AHLFLK2025 (Fully Fixed Reseller Bypass Leak - Token & Date Dual Protection)
+
+# ==========================================
+# 1. CONFIGURATION & CORE BOT SETUP
+# ==========================================
 import os
 import re
 import json
@@ -14,9 +18,6 @@ from flask import Flask, request, abort
 import telebot
 from telebot import types
 
-# ==========================================
-# 1. CONFIGURATION & CORE BOT SETUP
-# ==========================================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = 5376544115
 DEFAULT_CREDITS = 100  
@@ -39,15 +40,11 @@ user_states = {}
 reseller_temp_data = {}
 MENU_BUTTONS = ["🌐 VPN Decrypt List", "➕ Add VIP User", "🔑 My VIP Users", "✏️ Edit VIP", "🗑 Delete VIP", "👤 Create Reseller", "📊 Reseller List", "✏️ Edit Reseller", "🗑 Delete Reseller", "🌐 View All VIPs", "💰 My Balance"]
 
-# Admin ဆက်သွယ်ရန် Link Markup ကို အောက်က function ဖြင့် အလွယ်တကူ ခေါ်သုံးမည်
 def get_admin_contact_markup():
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton(text="💬 Contact Admin", url="https://t.me/ahlflk2025"))
     return markup
 
-# ==========================================
-# 2. FLASK SERVER & WEBHOOK CONTROLLER
-# ==========================================
 @app.route('/')
 def home():
     return "VIP & Reseller Date-Locked Bot is Active!"
@@ -67,7 +64,7 @@ def run_server():
     app.run(host='0.0.0.0', port=port)
 
 # ==========================================
-# 3. CORE MATH & XXTEA DECRYPTION ALGORITHM
+# 2. CRYPTOGRAPHY & DECRYPTION ENGINE (XXTEA)
 # ==========================================
 def u32(x): return x & 0xFFFFFFFF
 
@@ -126,9 +123,6 @@ def parse_delta(delta_val):
         else: return int(delta_val, 16)
     except: return 0x2e0ba747
 
-# ==========================================
-# 4. MULTI-METHOD INNER LAYER PROCESSORS
-# ==========================================
 def decrypt_inner_base64_recursive(encrypted_str):
     if not isinstance(encrypted_str, str) or len(encrypted_str) < 4: return encrypted_str
     try:
@@ -197,10 +191,10 @@ def get_vpn_configs():
     except: return []
 
 # ==========================================
-# 5. DATABASE & GITHUB SYNC
+# 3. DATABASE & GITHUB SYNC SYSTEM
 # ==========================================
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         cursor.execute('''CREATE TABLE IF NOT EXISTS auth_keys (
@@ -239,7 +233,7 @@ def pull_data_from_github():
             if res_raw.status_code == 200: file_content_keys = res_raw.text
 
         if file_content_keys:
-            conn = sqlite3.connect(DB_FILE)
+            conn = sqlite3.connect(DB_FILE, check_same_thread=False)
             try:
                 cursor = conn.cursor()
                 cursor.execute("DELETE FROM auth_keys")
@@ -265,7 +259,7 @@ def pull_data_from_github():
             if res_raw.status_code == 200: file_content_resellers = res_raw.text
 
         if file_content_resellers:
-            conn = sqlite3.connect(DB_FILE)
+            conn = sqlite3.connect(DB_FILE, check_same_thread=False)
             try:
                 cursor = conn.cursor()
                 cursor.execute("DELETE FROM users WHERE tg_id != ?", (ADMIN_ID,))
@@ -285,7 +279,7 @@ def pull_data_from_github():
 
 def sync_db_to_github():
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
         try:
             cursor = conn.cursor()
             cursor.execute("SELECT target_id, key_string, unit_val, duration_type, added_by, created_at FROM auth_keys")
@@ -305,7 +299,7 @@ def sync_db_to_github():
 
 def sync_resellers_to_github():
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
         try:
             cursor = conn.cursor()
             cursor.execute("SELECT tg_id, username, token_balance, expire_date FROM users")
@@ -323,6 +317,9 @@ def sync_resellers_to_github():
         requests.put(url, headers=headers, json=payload)
     except Exception as e: print(f"[-] Reseller Sync Error: {str(e)}")
 
+# ==========================================
+# 4. AUTHENTICATION & TOKEN LOGIC
+# ==========================================
 def calculate_days(unit, duration_type):
     if duration_type.lower() == 'm':
         return int(unit) * 30
@@ -330,7 +327,7 @@ def calculate_days(unit, duration_type):
 
 def is_admin(user_id): 
     if user_id == ADMIN_ID: return True
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT role FROM users WHERE tg_id = ? AND role = 'admin'", (user_id,))
@@ -341,7 +338,7 @@ def is_admin(user_id):
 
 def is_reseller(user_id):
     if user_id == ADMIN_ID: return True
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT role FROM users WHERE tg_id = ? AND (role = 'reseller' OR role = 'admin')", (user_id,))
@@ -353,7 +350,7 @@ def is_reseller(user_id):
 def check_vip_status(user_id):
     if user_id == ADMIN_ID: return True, "Unlimited (Admin)"
     
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT role, token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
@@ -390,7 +387,7 @@ def check_vip_status(user_id):
 
 def get_reseller_tokens(user_id):
     if user_id == ADMIN_ID: return 9999999
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT token_balance FROM users WHERE tg_id = ?", (user_id,))
@@ -402,7 +399,7 @@ def get_reseller_tokens(user_id):
 def deduct_reseller_tokens_by_days(user_id, required_tokens):
     if user_id == ADMIN_ID: return True
     
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
@@ -425,6 +422,9 @@ def deduct_reseller_tokens_by_days(user_id, required_tokens):
     finally:
         conn.close()
 
+# ==========================================
+# 5. TELEGRAM INTERFACE & NAVIGATION MAIN
+# ==========================================
 def get_main_keyboard(user_id):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     is_vip, _ = check_vip_status(user_id)
@@ -450,9 +450,6 @@ def get_main_keyboard(user_id):
         
     return markup
 
-# ==========================================
-# 6. TELEGRAM BOT HANDLERS & EVENTS
-# ==========================================
 @bot.message_handler(func=lambda msg: msg.text in MENU_BUTTONS)
 def handle_menu_buttons(message):
     user_id = message.from_user.id
@@ -554,7 +551,9 @@ def handle_decrypt_callback(call):
     except Exception as e:
         bot.send_message(chat_id, f"❌ <b>Error:</b> <code>{str(e)}</code>\nပြဿနာတစ်စုံတစ်ရာရှိပါက Admin သို့ မေးမြန်းနိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
 
-# ----------------- ➕ ADD VIP USER -----------------
+# ==========================================
+# 6. RESELLER PANEL: MANAGE VIP CUSTOMERS
+# ==========================================
 def cmd_add_vip(message):
     user_id = message.from_user.id
     if not is_reseller(user_id): return
@@ -583,7 +582,7 @@ def process_vip_add(message):
     target_vip_id = int(parts[0])
     pull_data_from_github()
     
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (str(target_vip_id),))
@@ -610,7 +609,7 @@ def process_vip_add(message):
 
     if deduct_reseller_tokens_by_days(user_id, required_tokens):
         try:
-            conn = sqlite3.connect(DB_FILE)
+            conn = sqlite3.connect(DB_FILE, check_same_thread=False)
             try:
                 cursor = conn.cursor()
                 cursor.execute("INSERT INTO auth_keys (target_id, key_string, unit_val, duration_type, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)", (str(target_vip_id), parts[1], parts[2], parts[3], user_id, datetime.now().strftime("%Y-%m-%d")))
@@ -631,7 +630,7 @@ def process_vip_add(message):
 def cmd_my_vips(message):
     if not is_reseller(message.from_user.id): return
     pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys WHERE added_by = ?", (message.from_user.id,))
@@ -648,22 +647,29 @@ def cmd_my_balance(message):
     if not is_reseller(user_id): return
     pull_data_from_github()
     
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
-    row = cursor.fetchone()
-    conn.close()
-    
-    tokens = row[0] if row else 0
-    exp_date_str = row[1] if row else "Unknown"
-    
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    tokens = 0
+    exp_date_str = "Unknown"
     is_expired = False
+    
     try:
-        expire_date = datetime.strptime(exp_date_str, "%Y-%m-%d")
-        if datetime.now() > expire_date:
-            is_expired = True
-    except:
+        cursor = conn.cursor()
+        cursor.execute("SELECT token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
+        row = cursor.fetchone()
+        if row:
+            tokens = row[0]
+            exp_date_str = row[1]
+            try:
+                expire_date = datetime.strptime(exp_date_str, "%Y-%m-%d")
+                if datetime.now() > expire_date:
+                    is_expired = True
+            except:
+                is_expired = True
+    except Exception as e:
+        print(f"[-] Balance Check Error: {str(e)}")
         is_expired = True
+    finally:
+        conn.close()
 
     needs_contact_admin = (is_expired or tokens <= 0) and (user_id != ADMIN_ID)
 
@@ -676,10 +682,8 @@ def cmd_my_balance(message):
     
     if needs_contact_admin:
         response_text += "\n\n⚠️ <b>သင့်အကောင့်သည် သက်တမ်းကုန်ဆုံးနေခြင်း (သို့မဟုတ်) တိုကင်ကုန်ဆုံးနေခြင်း ဖြစ်ပေါ်နေပါသည်။</b>"
-        
         admin_markup = types.InlineKeyboardMarkup()
         admin_markup.add(types.InlineKeyboardButton(text="💬 Contact Admin", url="https://t.me/ahlflk2025"))
-        
         bot.reply_to(message, response_text, reply_markup=admin_markup, parse_mode="HTML")
     else:
         bot.reply_to(message, response_text, reply_markup=get_main_keyboard(user_id), parse_mode="HTML")
@@ -688,7 +692,7 @@ def admin_reseller_edit_vip_menu(message):
     user_id = message.from_user.id
     if not is_reseller(user_id): return
     pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         if is_admin(user_id):
@@ -714,7 +718,7 @@ def process_edit_vip_id(message):
     target_id_str = message.text.strip()
     if not target_id_str.isdigit(): return bot.reply_to(message, "❌ Telegram ID အမှန်ကို ရိုက်ပို့ပေးပါ။")
         
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         if is_admin(user_id):
@@ -752,7 +756,7 @@ def process_edit_vip_duration(message):
     pull_data_from_github()
     
     if deduct_reseller_tokens_by_days(user_id, new_days):
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
         try:
             cursor = conn.cursor()
             cursor.execute("UPDATE auth_keys SET unit_val = ?, duration_type = ?, created_at = ? WHERE target_id = ?", (int(parts[0]), parts[1].lower(), datetime.now().strftime("%Y-%m-%d"), str(temp['target_id'])))
@@ -773,7 +777,7 @@ def admin_reseller_delete_vip_menu(message):
     user_id = message.from_user.id
     if not is_reseller(user_id): return
     pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         if is_admin(user_id):
@@ -797,7 +801,7 @@ def process_delete_vip_by_id(message):
     id_to_del = message.text.strip()
     if not id_to_del.isdigit(): return bot.reply_to(message, "❌ ID မှားယွင်းနေပါသည်။")
     pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         if is_admin(user_id):
@@ -816,7 +820,9 @@ def process_delete_vip_by_id(message):
     bot.reply_to(message, f"✅ VIP User: <b>{row[0]}</b> ကို ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode="HTML")
     user_states[user_id] = None
 
-# ----------------- 👤 CREATE RESELLER -----------------
+# ==========================================
+# 7. MAIN ADMIN PANEL: MANAGE RESELLERS
+# ==========================================
 def admin_create_reseller(message):
     if not is_admin(message.from_user.id): return
     user_states[message.from_user.id] = 'w_one_line_reseller'
@@ -847,7 +853,7 @@ def process_one_line_reseller(message):
         return bot.reply_to(message, "❌ ရက်စွဲပုံစံ မှားနေပါသည်။ YYYY-MM-DD (ဥပမာ- 2026-07-02) အတိုင်း ရေးပေးပါ။")
     
     pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT username FROM users WHERE tg_id = ?", (r_id,))
@@ -867,7 +873,7 @@ def process_one_line_reseller(message):
         return bot.reply_to(message, f"❌ ဤ ID သည် VIP စာရင်းထဲတွင် ရှိနေသောကြောင့် Reseller ခန့်၍မရပါ။")
 
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
         try:
             cursor = conn.cursor()
             cursor.execute("INSERT INTO users (tg_id, username, role, token_balance, expire_date) VALUES (?, ?, 'reseller', ?, ?)", (r_id, r_name, r_tokens, r_date))
@@ -892,7 +898,7 @@ def process_one_line_reseller(message):
 def admin_view_resellers(message):
     if not is_admin(message.from_user.id): return
     pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT tg_id, username, token_balance, expire_date FROM users WHERE role='reseller' AND tg_id != ?", (ADMIN_ID,))
@@ -904,11 +910,10 @@ def admin_view_resellers(message):
     for r in rows: res += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b>\n🪙 {r[2]} Tokens | ⏳ Exp: <code>{r[3]}</code>\n\n"
     bot.reply_to(message, res, parse_mode="HTML")
 
-# ----------------- ✏️ EDIT RESELLER -----------------
 def admin_edit_reseller_menu(message):
     if not is_admin(message.from_user.id): return
     pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT tg_id, username, token_balance, expire_date FROM users WHERE role = 'reseller' AND tg_id != ?", (ADMIN_ID,))
@@ -931,7 +936,7 @@ def process_edit_reseller_id(message):
     target_id_str = message.text.strip()
     if not target_id_str.isdigit(): return bot.reply_to(message, "❌ Telegram ID အမှန်ကို ရိုက်ပို့ပေးပါ။")
         
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT username, token_balance, expire_date FROM users WHERE tg_id = ? AND role = 'reseller'", (int(target_id_str),))
@@ -973,7 +978,7 @@ def process_edit_reseller_data(message):
     pull_data_from_github()
     
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
         try:
             cursor = conn.cursor()
             cursor.execute("UPDATE users SET username = ?, token_balance = ?, expire_date = ? WHERE tg_id = ?", (new_name, new_tokens, new_date, temp['target_reseller_id']))
@@ -989,11 +994,10 @@ def process_edit_reseller_data(message):
     user_states[admin_id] = None
     if admin_id in reseller_temp_data: del reseller_temp_data[admin_id]
 
-# ----------------- 🗑 DELETE RESRELLER -----------------
 def admin_delete_reseller_menu(message):
     if not is_admin(message.from_user.id): return
     pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT tg_id, username FROM users WHERE role = 'reseller' AND tg_id != ?", (ADMIN_ID,))
@@ -1013,7 +1017,7 @@ def process_delete_reseller_by_id(message):
     id_to_del = message.text.strip()
     if not id_to_del.isdigit(): return bot.reply_to(message, "❌ ID မှားယွင်းနေပါသည်။")
     pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT username FROM users WHERE tg_id = ? AND role = 'reseller'", (int(id_to_del),))
@@ -1032,7 +1036,7 @@ def process_delete_reseller_by_id(message):
 def admin_view_all_keys(message):
     if not is_admin(message.from_user.id): return
     pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys")
@@ -1045,7 +1049,7 @@ def admin_view_all_keys(message):
     bot.reply_to(message, res, parse_mode="HTML")
 
 # ==========================================
-# 7. WEBHOOK INITIALIZATION & RUN ENGINE
+# 8. BOT POLLING & WEBHOOK EXECUTION
 # ==========================================
 if __name__ == "__main__":
     init_db()
