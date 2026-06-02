@@ -649,17 +649,40 @@ def cmd_my_balance(message):
     pull_data_from_github()
     
     conn = sqlite3.connect(DB_FILE)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
-        row = cursor.fetchone()
-    finally:
-        conn.close()
+    cursor = conn.cursor()
+    cursor.execute("SELECT token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
     
     tokens = row[0] if row else 0
-    exp_date = row[1] if row else "Unknown"
+    exp_date_str = row[1] if row else "Unknown"
     
-    bot.reply_to(message, f"💰 <b>သင့်အကောင့်အခြေအနေ (Reseller Balance):</b>\n\n👤 အမည်: {message.from_user.first_name}\n🪙 Credit Balance: <code>{tokens}</code> Tokens\n⏳ သင့်သက်တမ်းကုန်မည့်ရက်: <code>{exp_date}</code>", reply_markup=get_main_keyboard(user_id), parse_mode="HTML")
+    is_expired = False
+    try:
+        expire_date = datetime.strptime(exp_date_str, "%Y-%m-%d")
+        if datetime.now() > expire_date:
+            is_expired = True
+    except:
+        is_expired = True
+
+    needs_contact_admin = (is_expired or tokens <= 0) and (user_id != ADMIN_ID)
+
+    response_text = (
+        f"💰 <b>သင့်အကောင့်အခြေအနေ (Reseller Balance):</b>\n\n"
+        f"👤 အမည်: {message.from_user.first_name}\n"
+        f"🪙 Credit Balance: <code>{tokens}</code> Tokens\n"
+        f"⏳ သင့်သက်တမ်းကုန်မည့်ရက်: <code>{exp_date_str}</code>"
+    )
+    
+    if needs_contact_admin:
+        response_text += "\n\n⚠️ <b>သင့်အကောင့်သည် သက်တမ်းကုန်ဆုံးနေခြင်း (သို့မဟုတ်) တိုကင်ကုန်ဆုံးနေခြင်း ဖြစ်ပေါ်နေပါသည်။</b>"
+        
+        admin_markup = types.InlineKeyboardMarkup()
+        admin_markup.add(types.InlineKeyboardButton(text="💬 Contact Admin", url="https://t.me/ahlflk2025"))
+        
+        bot.reply_to(message, response_text, reply_markup=admin_markup, parse_mode="HTML")
+    else:
+        bot.reply_to(message, response_text, reply_markup=get_main_keyboard(user_id), parse_mode="HTML")
 
 def admin_reseller_edit_vip_menu(message):
     user_id = message.from_user.id
