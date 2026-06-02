@@ -1012,7 +1012,7 @@ def admin_delete_reseller_menu(message):
         conn.close()
     if not rows: return bot.reply_to(message, "📭 ဖျက်ရန် Reseller မရှိပါ။")
     res_list = "👥 <b>လက်ရှိ Reseller စာရင်းများ:</b>\n\n"
-    for r in rows: res_list += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b>\n"
+    for r in rows: res_list += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b> (🪙 {r[2]} | ⏳ {r[3]})\n"
     res_list += "\n✍️ <b>ဖျက်ထုတ်လိုသော Reseller ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-</b>"
     user_states[message.from_user.id] = 'w_del_reseller'
     bot.send_message(message.chat.id, res_list, parse_mode="HTML")
