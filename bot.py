@@ -403,7 +403,7 @@ def deduct_reseller_tokens_by_days(user_id, required_tokens):
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
-        res = cursor.fetchone()
+        res = res = cursor.fetchone()
         if res:
             tokens, exp_date_str = res
             try:
@@ -486,6 +486,12 @@ def handle_menu_buttons(message):
 def display_decrypt_list(message_or_call, user_id, chat_id):
     pull_data_from_github()
     is_vip, exp_status = check_vip_status(user_id)
+
+    try:
+        bot_info = bot.get_me()
+        bot_name = bot_info.first_name
+    except:
+        bot_name = "Safe Decryptor & VIP Center"
     
     if not is_vip:
         no_vip_text = f"🚫 <b>သင်သည် VIP စနစ်အသုံးပြုခွင့် မရှိသေးပါ (သို့မဟုတ်) သက်တမ်းကုန်သွားပါပြီ!</b>\n\nသင့်ရဲ့ Telegram ID: <code>{user_id}</code>\nအခြေအနေ: <b>{exp_status}</b>\n\nAdmin ထံဆက်သွယ်၍ သက်တမ်းတိုးမြှင့်/ဝယ်ယူနိုင်ပါသည်။"
@@ -497,7 +503,7 @@ def display_decrypt_list(message_or_call, user_id, chat_id):
         return
 
     configs = get_vpn_configs()
-    welcome_text = f"👋 <b>Safe Decryptor & VIP Center မှ ကြိုဆိုပါတယ်!</b>\n\n⏳ <b>သင့်သက်တမ်းကုန်မည့်ရက်:</b> <code>{exp_status}</code>\n\nDecrypt လုပ်ချင်တဲ့ VPN Config အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ-"
+    welcome_text = f"👋 <b>{bot_name} မှ ကြိုဆိုပါတယ်!</b>\n\n⏳ <b>သင့်သက်တမ်းကုန်မည့်ရက်:</b> <code>{exp_status}</code>\n\nDecrypt လုပ်ချင်တဲ့ VPN Config အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ-"
     
     markup = types.InlineKeyboardMarkup(row_width=2)
     buttons = []
