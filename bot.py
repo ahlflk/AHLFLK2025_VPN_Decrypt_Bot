@@ -726,15 +726,15 @@ def admin_reseller_delete_vip_menu(message):
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     if is_admin(user_id):
-        cursor.execute("SELECT target_id, key_string FROM auth_keys")
+        cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys")
     else:
-        cursor.execute("SELECT target_id, key_string FROM auth_keys WHERE added_by = ?", (user_id,))
+        cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys WHERE added_by = ?", (user_id,))
     rows = cursor.fetchall()
     conn.close()
     if not rows: return bot.reply_to(message, "📭 ဖျက်ရန် VIP မရှိပါ။")
     
     res_list = "🗑 <b>လက်ရှိ VIP အသုံးပြုသူ စာရင်းများ</b>\n\n"
-    for r in rows: res_list += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b>\n"
+    for r in rows: res_list += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b> ({r[2]}{r[3]})\n"
     res_list += "\n✍️ <b>ဖျက်ထုတ်လိုသော VIP ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-</b>"
     user_states[user_id] = 'w_del_vip'
     bot.send_message(message.chat.id, res_list, parse_mode="HTML")
