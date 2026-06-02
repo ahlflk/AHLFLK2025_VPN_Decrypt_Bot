@@ -409,32 +409,32 @@ def deduct_reseller_tokens_by_days(user_id, required_tokens):
 def get_main_keyboard(user_id):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     
-    is_vip, _ = check_vip_status(user_id)[span_6](start_span)[span_6](end_span)
+    is_vip, _ = check_vip_status(user_id)
     
-    # VIP သို့မဟုတ် Admin သက်တမ်းရှိမှသာ Decrypt List ခလုတ်ကို ပြမည်[span_7](start_span)[span_7](end_span)
-    if is_vip or is_admin(user_id):[span_8](start_span)[span_8](end_span)
-        markup.row(types.KeyboardButton("🌐 VPN Decrypt List"))[span_9](start_span)[span_9](end_span)
+    # VIP သို့မဟုတ် Admin သက်တမ်းရှိမှသာ Decrypt List ခလုတ်ကို ပြမည်
+    if is_vip or is_admin(user_id):
+        markup.row(types.KeyboardButton("🌐 VPN Decrypt List"))
     
-    # Reseller Staff သို့မဟုတ် Admin ဖြစ်လျှင် VIP Control Buttons ပြမည်[span_10](start_span)[span_10](end_span)
-    if is_reseller(user_id) and (is_vip or user_id == ADMIN_ID):[span_11](start_span)[span_11](end_span)
-        markup.row(types.KeyboardButton("➕ Add VIP User"), types.KeyboardButton("🔑 My VIP Users"))[span_12](start_span)[span_12](end_span)
-        markup.row(types.KeyboardButton("✏️ Edit VIP"), types.KeyboardButton("🗑 Delete VIP"))[span_13](start_span)[span_13](end_span)
+    # Reseller Staff သို့မဟုတ် Admin ဖြစ်လျှင် VIP Control Buttons ပြမည်
+    if is_reseller(user_id) and (is_vip or user_id == ADMIN_ID):
+        markup.row(types.KeyboardButton("➕ Add VIP User"), types.KeyboardButton("🔑 My VIP Users"))
+        markup.row(types.KeyboardButton("✏️ Edit VIP"), types.KeyboardButton("🗑 Delete VIP"))
         
-        if is_admin(user_id):[span_14](start_span)[span_14](end_span)
-            markup.row(types.KeyboardButton("💰 My Balance"), types.KeyboardButton("🌐 View All VIPs"))[span_15](start_span)[span_15](end_span)
+        if is_admin(user_id):
+            markup.row(types.KeyboardButton("💰 My Balance"), types.KeyboardButton("🌐 View All VIPs"))
         else:
-            markup.row(types.KeyboardButton("💰 My Balance"))[span_16](start_span)[span_16](end_span)
+            markup.row(types.KeyboardButton("💰 My Balance"))
             
-    elif is_reseller(user_id):[span_17](start_span)[span_17](end_span)
-        # သက်တမ်းကုန်နေသော Reseller ဆိုလျှင် Balance တစ်ခုပဲပြမည်[span_18](start_span)[span_18](end_span)
-        markup.row(types.KeyboardButton("💰 My Balance"))[span_19](start_span)[span_19](end_span)
+    elif is_reseller(user_id):
+        # သက်တမ်းကုန်နေသော Reseller ဆိုလျှင် Balance တစ်ခုပဲပြမည်
+        markup.row(types.KeyboardButton("💰 My Balance"))
         
     # Admin System Buttons
-    if is_admin(user_id):[span_20](start_span)[span_20](end_span)
-        markup.row(types.KeyboardButton("👤 Create Reseller"), types.KeyboardButton("📊 Reseller List"))[span_21](start_span)[span_21](end_span)
-        markup.row(types.KeyboardButton("✏️ Edit Reseller"), types.KeyboardButton("🗑 Delete Reseller"))[span_22](start_span)[span_22](end_span)
+    if is_admin(user_id):
+        markup.row(types.KeyboardButton("👤 Create Reseller"), types.KeyboardButton("📊 Reseller List"))
+        markup.row(types.KeyboardButton("✏️ Edit Reseller"), types.KeyboardButton("🗑 Delete Reseller"))
         
-    return markup[span_23](start_span)[span_23](end_span)
+    return markup
 
 # ==========================================
 # 6. TELEGRAM BOT HANDLERS & EVENTS
