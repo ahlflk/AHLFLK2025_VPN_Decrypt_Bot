@@ -37,8 +37,13 @@ DB_FILE = os.path.join(BASE_DIR, "keys_management.db")
 
 user_states = {}
 reseller_temp_data = {}
-# 💡 MENU BUTTONS တွင် "✏️ Edit Reseller" အသစ်ဖြည့်စွက်ထားသည်
 MENU_BUTTONS = ["🌐 VPN Decrypt List", "➕ Add VIP User", "🔑 My VIP Users", "✏️ Edit VIP", "🗑 Delete VIP", "👤 Create Reseller", "📊 Reseller List", "✏️ Edit Reseller", "🗑 Delete Reseller", "🌐 View All VIPs", "💰 My Balance"]
+
+# Admin ဆက်သွယ်ရန် Link Markup ကို အောက်က function ဖြင့် အလွယ်တကူ ခေါ်သုံးမည်
+def get_admin_contact_markup():
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton(text="💬 Contact Admin", url="https://t.me/ahlflk2025"))
+    return markup
 
 # ==========================================
 # 2. FLASK SERVER & WEBHOOK CONTROLLER
@@ -196,27 +201,29 @@ def get_vpn_configs():
 # ==========================================
 def init_db():
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS auth_keys (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, 
-        target_id TEXT UNIQUE,
-        key_string TEXT, 
-        unit_val TEXT, 
-        duration_type TEXT, 
-        added_by INTEGER,
-        created_at TEXT
-    )''')
-    
-    cursor.execute('''CREATE TABLE IF NOT EXISTS users (
-        tg_id INTEGER PRIMARY KEY, 
-        username TEXT, 
-        role TEXT,
-        token_balance INTEGER DEFAULT 0,
-        expire_date TEXT DEFAULT '2099-12-31'
-    )''')
-    cursor.execute("INSERT OR IGNORE INTO users (tg_id, username, role, token_balance, expire_date) VALUES (?, ?, ?, ?, ?)", (ADMIN_ID, 'Main_Admin', 'admin', 9999999, '2099-12-31'))
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''CREATE TABLE IF NOT EXISTS auth_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            target_id TEXT UNIQUE,
+            key_string TEXT, 
+            unit_val TEXT, 
+            duration_type TEXT, 
+            added_by INTEGER,
+            created_at TEXT
+        )''')
+        
+        cursor.execute('''CREATE TABLE IF NOT EXISTS users (
+            tg_id INTEGER PRIMARY KEY, 
+            username TEXT, 
+            role TEXT,
+            token_balance INTEGER DEFAULT 0,
+            expire_date TEXT DEFAULT '2099-12-31'
+        )''')
+        cursor.execute("INSERT OR IGNORE INTO users (tg_id, username, role, token_balance, expire_date) VALUES (?, ?, ?, ?, ?)", (ADMIN_ID, 'Main_Admin', 'admin', 9999999, '2099-12-31'))
+        conn.commit()
+    finally:
+        conn.close()
 
 def pull_data_from_github():
     headers = {"Accept": "application/vnd.github.v3+json"}
@@ -233,17 +240,19 @@ def pull_data_from_github():
 
         if file_content_keys:
             conn = sqlite3.connect(DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM auth_keys")
-            for line in file_content_keys.split("\n"):
-                if " | " in line:
-                    parts = [p.strip() for p in line.split("|")]
-                    if len(parts) >= 4:
-                        owner = int(parts[4]) if len(parts) >= 5 and parts[4].isdigit() else ADMIN_ID
-                        cdate = parts[5] if len(parts) == 6 else datetime.now().strftime("%Y-%m-%d")
-                        cursor.execute("INSERT OR IGNORE INTO auth_keys (target_id, key_string, unit_val, duration_type, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)", (parts[0], parts[1], parts[2], parts[3], owner, cdate))
-            conn.commit()
-            conn.close()
+            try:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM auth_keys")
+                for line in file_content_keys.split("\n"):
+                    if " | " in line:
+                        parts = [p.strip() for p in line.split("|")]
+                        if len(parts) >= 4:
+                            owner = int(parts[4]) if len(parts) >= 5 and parts[4].isdigit() else ADMIN_ID
+                            cdate = parts[5] if len(parts) == 6 else datetime.now().strftime("%Y-%m-%d")
+                            cursor.execute("INSERT OR IGNORE INTO auth_keys (target_id, key_string, unit_val, duration_type, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)", (parts[0], parts[1], parts[2], parts[3], owner, cdate))
+                conn.commit()
+            finally:
+                conn.close()
     except Exception as e: print(f"[-] Pull Keys Error: {str(e)}")
 
     try:
@@ -257,28 +266,32 @@ def pull_data_from_github():
 
         if file_content_resellers:
             conn = sqlite3.connect(DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM users WHERE tg_id != ?", (ADMIN_ID,))
-            for line in file_content_resellers.split("\n"):
-                if " | " in line:
-                    parts = [p.strip() for p in line.split("|")]
-                    if parts[0].isdigit():
-                        tg_id_val = int(parts[0])
-                        tokens = int(parts[2]) if len(parts) >= 3 and parts[2].isdigit() else DEFAULT_CREDITS
-                        exp_d = parts[3] if len(parts) == 4 else (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
-                        role_val = 'admin' if tg_id_val == ADMIN_ID else 'reseller'
-                        cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, token_balance, expire_date) VALUES (?, ?, ?, ?, ?)", (tg_id_val, parts[1], role_val, tokens, exp_d))
-            conn.commit()
-            conn.close()
+            try:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM users WHERE tg_id != ?", (ADMIN_ID,))
+                for line in file_content_resellers.split("\n"):
+                    if " | " in line:
+                        parts = [p.strip() for p in line.split("|")]
+                        if parts[0].isdigit():
+                            tg_id_val = int(parts[0])
+                            tokens = int(parts[2]) if len(parts) >= 3 and parts[2].isdigit() else DEFAULT_CREDITS
+                            exp_d = parts[3] if len(parts) == 4 else (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
+                            role_val = 'admin' if tg_id_val == ADMIN_ID else 'reseller'
+                            cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, token_balance, expire_date) VALUES (?, ?, ?, ?, ?)", (tg_id_val, parts[1], role_val, tokens, exp_d))
+                conn.commit()
+            finally:
+                conn.close()
     except Exception as e: print(f"[-] Pull Resellers Error: {str(e)}")
 
 def sync_db_to_github():
     try:
         conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("SELECT target_id, key_string, unit_val, duration_type, added_by, created_at FROM auth_keys")
-        rows = cursor.fetchall()
-        conn.close()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT target_id, key_string, unit_val, duration_type, added_by, created_at FROM auth_keys")
+            rows = cursor.fetchall()
+        finally:
+            conn.close()
         
         content = "\n".join([f"{r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} | {r[5]}" for r in rows])
         url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FILE_PATH}"
@@ -293,10 +306,12 @@ def sync_db_to_github():
 def sync_resellers_to_github():
     try:
         conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("SELECT tg_id, username, token_balance, expire_date FROM users")
-        rows = cursor.fetchall()
-        conn.close()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT tg_id, username, token_balance, expire_date FROM users")
+            rows = cursor.fetchall()
+        finally:
+            conn.close()
         
         content = "\n".join([f"{r[0]} | {r[1]} | {r[2]} | {r[3]}" for r in rows])
         url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{RESELLER_FILE_PATH}"
@@ -316,106 +331,107 @@ def calculate_days(unit, duration_type):
 def is_admin(user_id): 
     if user_id == ADMIN_ID: return True
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT role FROM users WHERE tg_id = ? AND role = 'admin'", (user_id,))
-    res = cursor.fetchone()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT role FROM users WHERE tg_id = ? AND role = 'admin'", (user_id,))
+        res = cursor.fetchone()
+    finally:
+        conn.close()
     return res is not None
 
 def is_reseller(user_id):
     if user_id == ADMIN_ID: return True
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT role FROM users WHERE tg_id = ? AND (role = 'reseller' OR role = 'admin')", (user_id,))
-    res = cursor.fetchone()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT role FROM users WHERE tg_id = ? AND (role = 'reseller' OR role = 'admin')", (user_id,))
+        res = cursor.fetchone()
+    finally:
+        conn.close()
     return res is not None
 
 def check_vip_status(user_id):
     if user_id == ADMIN_ID: return True, "Unlimited (Admin)"
     
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT role, token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
-    user_row = cursor.fetchone()
-    if user_row and user_row[0] == 'reseller':
-        conn.close()
-        exp_date_str = user_row[2]
-        
-        try:
-            expire_date = datetime.strptime(exp_date_str, "%Y-%m-%d")
-            # 💡 Token 0 ကိုမစစ်ဘဲ Date တစ်ခုတည်းဖြင့်သာ VIP function ကို လော့ခ်ချစစ်ဆေးသည်[span_2](start_span)[span_2](end_span)
-            if datetime.now() > expire_date:
-                return False, "Expired (Date Out)"
-            return True, f"Reseller Staff ({exp_date_str})"
-        except:
-            return False, "Date Error"
-
-    cursor.execute("SELECT unit_val, duration_type, created_at FROM auth_keys WHERE target_id = ?", (str(user_id),))
-    row = cursor.fetchone()
-    conn.close()
-    
-    if not row: return False, "Not VIP"
-    
-    unit_val, duration_type, created_at_str = row
     try:
-        created_date = datetime.strptime(created_at_str, "%Y-%m-%d")
-        days_to_add = calculate_days(unit_val, duration_type)
-        expire_date = created_date + timedelta(days=days_to_add)
+        cursor = conn.cursor()
+        cursor.execute("SELECT role, token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
+        user_row = cursor.fetchone()
         
-        if datetime.now() <= expire_date:
-            return True, expire_date.strftime("%Y-%m-%d")
-        else:
-            return False, "Expired"
-    except: return False, "Error Check"
+        if user_row and user_row[0] == 'reseller':
+            exp_date_str = user_row[2]
+            try:
+                expire_date = datetime.strptime(exp_date_str, "%Y-%m-%d").date()
+                if datetime.now().date() > expire_date:
+                    return False, "Expired (Date Out)"
+                return True, f"Reseller Staff ({exp_date_str})"
+            except:
+                return False, "Date Error"
+
+        cursor.execute("SELECT unit_val, duration_type, created_at FROM auth_keys WHERE target_id = ?", (str(user_id),))
+        row = cursor.fetchone()
+        
+        if not row: return False, "Not VIP"
+        
+        unit_val, duration_type, created_at_str = row
+        try:
+            created_date = datetime.strptime(created_at_str, "%Y-%m-%d").date()
+            days_to_add = calculate_days(unit_val, duration_type)
+            expire_date = created_date + timedelta(days=days_to_add)
+            
+            if datetime.now().date() <= expire_date:
+                return True, expire_date.strftime("%Y-%m-%d")
+            else:
+                return False, "Expired"
+        except: return False, "Error Check"
+    finally:
+        conn.close()
 
 def get_reseller_tokens(user_id):
     if user_id == ADMIN_ID: return 9999999
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT token_balance FROM users WHERE tg_id = ?", (user_id,))
-    res = cursor.fetchone()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT token_balance FROM users WHERE tg_id = ?", (user_id,))
+        res = cursor.fetchone()
+    finally:
+        conn.close()
     return res[0] if res else 0
 
 def deduct_reseller_tokens_by_days(user_id, required_tokens):
     if user_id == ADMIN_ID: return True
     
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
-    res = cursor.fetchone()
-    if res:
-        tokens, exp_date_str = res
-        try:
-            expire_date = datetime.strptime(exp_date_str, "%Y-%m-%d")
-            if datetime.now() > expire_date:
-                conn.close()
-                return False 
-        except: 
-            conn.close()
-            return False
-            
-        if tokens >= required_tokens:
-            cursor.execute("UPDATE users SET token_balance = token_balance - ? WHERE tg_id = ?", (required_tokens, user_id))
-            conn.commit()
-            conn.close()
-            sync_resellers_to_github()
-            return True
-    conn.close()
-    return False
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
+        res = cursor.fetchone()
+        if res:
+            tokens, exp_date_str = res
+            try:
+                expire_date = datetime.strptime(exp_date_str, "%Y-%m-%d").date()
+                if datetime.now().date() > expire_date:
+                    return False 
+            except: 
+                return False
+                
+            if tokens >= required_tokens:
+                cursor.execute("UPDATE users SET token_balance = token_balance - ? WHERE tg_id = ?", (required_tokens, user_id))
+                conn.commit()
+                sync_resellers_to_github()
+                return True
+        return False
+    finally:
+        conn.close()
 
 def get_main_keyboard(user_id):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    
     is_vip, _ = check_vip_status(user_id)
     
-    # VIP သို့မဟုတ် Admin သက်တမ်းရှိမှသာ Decrypt List ခလုတ်ကို ပြမည်
     if is_vip or is_admin(user_id):
         markup.row(types.KeyboardButton("🌐 VPN Decrypt List"))
     
-    # Reseller Staff သို့မဟုတ် Admin ဖြစ်လျှင် VIP Control Buttons ပြမည်
     if is_reseller(user_id) and (is_vip or user_id == ADMIN_ID):
         markup.row(types.KeyboardButton("➕ Add VIP User"), types.KeyboardButton("🔑 My VIP Users"))
         markup.row(types.KeyboardButton("✏️ Edit VIP"), types.KeyboardButton("🗑 Delete VIP"))
@@ -426,10 +442,8 @@ def get_main_keyboard(user_id):
             markup.row(types.KeyboardButton("💰 My Balance"))
             
     elif is_reseller(user_id):
-        # သက်တမ်းကုန်နေသော Reseller ဆိုလျှင် Balance တစ်ခုပဲပြမည်
         markup.row(types.KeyboardButton("💰 My Balance"))
         
-    # Admin System Buttons
     if is_admin(user_id):
         markup.row(types.KeyboardButton("👤 Create Reseller"), types.KeyboardButton("📊 Reseller List"))
         markup.row(types.KeyboardButton("✏️ Edit Reseller"), types.KeyboardButton("🗑 Delete Reseller"))
@@ -447,7 +461,7 @@ def handle_menu_buttons(message):
     
     is_vip, _ = check_vip_status(user_id)
     if message.text != "💰 My Balance" and not is_vip and not is_admin(user_id):
-        return bot.reply_to(message, "🚫 <b>သင့်အကောင့်သည် သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်၍ ဤခလုတ်အား အသုံးပြုနိုင်ခြင်းမရှိပါ။</b>", parse_mode="HTML")
+        return bot.reply_to(message, "🚫 <b>သင့်အကောင့်သည် သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်၍ ဤခလုတ်အား အသုံးပြုနိုင်ခြင်းမရှိပါ။</b>\n\nAdmin ထံ ဆက်သွယ်ရန် ခလုတ်ကို နှိပ်ပါ။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
 
     if message.text == "🌐 VPN Decrypt List":
         display_decrypt_list(message, user_id, message.chat.id)
@@ -478,13 +492,11 @@ def display_decrypt_list(message_or_call, user_id, chat_id):
     
     if not is_vip:
         no_vip_text = f"🚫 <b>သင်သည် VIP စနစ်အသုံးပြုခွင့် မရှိသေးပါ (သို့မဟုတ်) သက်တမ်းကုန်သွားပါပြီ!</b>\n\nသင့်ရဲ့ Telegram ID: <code>{user_id}</code>\nအခြေအနေ: <b>{exp_status}</b>\n\nAdmin ထံဆက်သွယ်၍ သက်တမ်းတိုးမြှင့်/ဝယ်ယူနိုင်ပါသည်။"
-        admin_markup = types.InlineKeyboardMarkup()
-        admin_markup.add(types.InlineKeyboardButton(text="💬 Contact Admin", url="https://t.me/ahlflk2025"))
         
         if isinstance(message_or_call, types.Message):
-            bot.reply_to(message_or_call, no_vip_text, reply_markup=admin_markup, parse_mode="HTML")
+            bot.reply_to(message_or_call, no_vip_text, reply_markup=get_admin_contact_markup(), parse_mode="HTML")
         else:
-            bot.send_message(chat_id, no_vip_text, reply_markup=admin_markup, parse_mode="HTML")
+            bot.send_message(chat_id, no_vip_text, reply_markup=get_admin_contact_markup(), parse_mode="HTML")
         return
 
     configs = get_vpn_configs()
@@ -520,6 +532,7 @@ def handle_decrypt_callback(call):
     is_vip, _ = check_vip_status(user_id)
     if not is_vip:
         bot.answer_callback_query(call.id, "🚫 သင်သည် VIP သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သည်။")
+        bot.send_message(chat_id, "🚫 သင်သည် VIP သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သဖြင့် အသုံးပြု၍မရပါ။ Admin ထံ ဆက်သွယ်ပါ။", reply_markup=get_admin_contact_markup())
         return
 
     vpn_id = call.data.split('_')[1]
@@ -539,7 +552,7 @@ def handle_decrypt_callback(call):
             bot.send_document(chat_id, doc, caption=f"✅ <b>{selected_vpn['name']} Decrypted Successfully!</b>", parse_mode="HTML")
         if os.path.exists(temp_file_path): os.remove(temp_file_path)
     except Exception as e:
-        bot.send_message(chat_id, f"❌ <b>Error:</b> <code>{str(e)}</code>", parse_mode="HTML")
+        bot.send_message(chat_id, f"❌ <b>Error:</b> <code>{str(e)}</code>\nပြဿနာတစ်စုံတစ်ရာရှိပါက Admin သို့ မေးမြန်းနိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
 
 # ----------------- ➕ ADD VIP USER -----------------
 def cmd_add_vip(message):
@@ -569,37 +582,41 @@ def process_vip_add(message):
     
     target_vip_id = int(parts[0])
     pull_data_from_github()
+    
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (str(target_vip_id),))
-    existing_vip = cursor.fetchone()
-    
-    cursor.execute("SELECT username FROM users WHERE tg_id = ?", (target_vip_id,))
-    existing_reseller = cursor.fetchone()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (str(target_vip_id),))
+        existing_vip = cursor.fetchone()
+        
+        cursor.execute("SELECT username FROM users WHERE tg_id = ?", (target_vip_id,))
+        existing_reseller = cursor.fetchone()
+    finally:
+        conn.close()
     
     if existing_vip:
         user_states[user_id] = None
-        return bot.reply_to(message, f"❌ <b>ထည့်သွင်း၍မရပါ!</b>\n\nဒီ ID (<code>{target_vip_id}</code>) သည် VIP စနစ်ထဲတွင် ရှိနှင့်ပြီးသား ဖြစ်နေပါသည်။", parse_mode="HTML")
+        return bot.reply_to(message, f"❌ <b>ထည့်သွင်း၍မရပါ!</b>\n\nဒီ ID (<code>{target_vip_id}</code>) သည် VIP စနစ်ထဲတွင် ရှိနှင့်ပြီးသား ဖြစ်နေပါသည်။")
 
     if existing_reseller:
         user_states[user_id] = None
-        return bot.reply_to(message, f"❌ <b>ထည့်သွင်း၍မရပါ!</b>\n\nဒီ ID သည် Reseller စာရင်းထဲတွင် ရှိနေသောကြောင့် VIP ထည့်၍မရပါ။", parse_mode="HTML")
+        return bot.reply_to(message, f"❌ <b>ထည့်သွင်း၍မရပါ!</b>\n\nဒီ ID သည် Reseller စာရင်းထဲတွင် ရှိနေသောကြောင့် VIP ထည့်၍မရပါ။")
 
     required_tokens = calculate_days(parts[2], parts[3])
     current_tokens = get_reseller_tokens(user_id)
     
     if not is_admin(user_id) and current_tokens < required_tokens:
-        return bot.reply_to(message, f"❌ Token မလုံလောက်ပါ။ {required_tokens} Tokens လိုအပ်သည်။")
+        return bot.reply_to(message, f"❌ Token မလုံလောက်ပါ။ {required_tokens} Tokens လိုအပ်သည်။ အကူအညီရရန် Admin သို့ ဆက်သွယ်ပါ။", reply_markup=get_admin_contact_markup())
 
     if deduct_reseller_tokens_by_days(user_id, required_tokens):
         try:
             conn = sqlite3.connect(DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO auth_keys (target_id, key_string, unit_val, duration_type, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)", (str(target_vip_id), parts[1], parts[2], parts[3], user_id, datetime.now().strftime("%Y-%m-%d")))
-            conn.commit()
-            conn.close()
+            try:
+                cursor = conn.cursor()
+                cursor.execute("INSERT INTO auth_keys (target_id, key_string, unit_val, duration_type, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)", (str(target_vip_id), parts[1], parts[2], parts[3], user_id, datetime.now().strftime("%Y-%m-%d")))
+                conn.commit()
+            finally:
+                conn.close()
             
             new_balance = get_reseller_tokens(user_id)
             bot.reply_to(message, f"✅ <b>VIP အကောင့် အောင်မြင်စွာ ဆောက်ပြီးပါပြီ။</b>\n👤 နာမည်: <b>{parts[1]}</b>\n💰 လက်ကျန်တိုကင်: <code>{new_balance}</code> Tokens", parse_mode="HTML")
@@ -607,7 +624,7 @@ def process_vip_add(message):
         except Exception as e: 
             bot.reply_to(message, f"❌ Database Error: {str(e)}")
     else:
-        bot.reply_to(message, "❌ တိုကင်နှုတ်ယူခြင်း မအောင်မြင်ပါ (သို့မဟုတ် သင့်သက်တမ်း ကုန်ဆုံးနေပါသည်)။")
+        bot.reply_to(message, "❌ တိုကင်နှုတ်ယူခြင်း မအောင်မြင်ပါ (သို့မဟုတ် သင့်သက်တမ်း ကုန်ဆုံးနေပါသည်)။", reply_markup=get_admin_contact_markup())
         
     user_states[user_id] = None
 
@@ -615,10 +632,12 @@ def cmd_my_vips(message):
     if not is_reseller(message.from_user.id): return
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys WHERE added_by = ?", (message.from_user.id,))
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys WHERE added_by = ?", (message.from_user.id,))
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
     if not rows: return bot.reply_to(message, "📭 သင်ထည့်သွင်းထားသော VIP အကောင့်မရှိသေးပါ။")
     res = "👥 <b>...သင်ထည့်ထားသော VIP အသုံးပြုသူများ...</b>\n\n"
     for r in rows: res += f"• ID: <code>{r[0]}</code> -> နာမည်: <b>{r[1]}</b> (သက်တမ်း: {r[2]} {r[3]})\n"
@@ -630,10 +649,12 @@ def cmd_my_balance(message):
     pull_data_from_github()
     
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
-    row = cursor.fetchone()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
+        row = cursor.fetchone()
+    finally:
+        conn.close()
     
     tokens = row[0] if row else 0
     exp_date = row[1] if row else "Unknown"
@@ -645,13 +666,15 @@ def admin_reseller_edit_vip_menu(message):
     if not is_reseller(user_id): return
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    if is_admin(user_id):
-        cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys")
-    else:
-        cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys WHERE added_by = ?", (user_id,))
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        if is_admin(user_id):
+            cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys")
+        else:
+            cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys WHERE added_by = ?", (user_id,))
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
     
     if not rows: return bot.reply_to(message, "📭 ပြင်ဆင်ရန် VIP အသုံးပြုသူ လုံးဝမရှိသေးပါ။")
     
@@ -669,13 +692,15 @@ def process_edit_vip_id(message):
     if not target_id_str.isdigit(): return bot.reply_to(message, "❌ Telegram ID အမှန်ကို ရိုက်ပို့ပေးပါ။")
         
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    if is_admin(user_id):
-        cursor.execute("SELECT key_string, unit_val, duration_type FROM auth_keys WHERE target_id = ?", (str(target_id_str),))
-    else:
-        cursor.execute("SELECT key_string, unit_val, duration_type FROM auth_keys WHERE target_id = ? AND added_by = ?", (str(target_id_str), user_id))
-    row = cursor.fetchone()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        if is_admin(user_id):
+            cursor.execute("SELECT key_string, unit_val, duration_type FROM auth_keys WHERE target_id = ?", (str(target_id_str),))
+        else:
+            cursor.execute("SELECT key_string, unit_val, duration_type FROM auth_keys WHERE target_id = ? AND added_by = ?", (str(target_id_str), user_id))
+        row = cursor.fetchone()
+    finally:
+        conn.close()
     
     if not row: return bot.reply_to(message, "❌ ဤ ID ဖြင့် VIP အား ရှာမတွေ့ပါ သို့မဟုတ် ပြင်ဆင်ခွင့်မရှိပါ။")
         
@@ -699,22 +724,24 @@ def process_edit_vip_duration(message):
     current_tokens = get_reseller_tokens(user_id)
     
     if not is_admin(user_id) and current_tokens < new_days:
-        return bot.reply_to(message, f"❌ သက်တမ်းတိုးရန် Token မလုံလောက်ပါ။")
+        return bot.reply_to(message, f"❌ သက်တမ်းတိုးရန် Token မလုံလောက်ပါ။ Admin ထံ ဆက်သွယ်ပါ။", reply_markup=get_admin_contact_markup())
         
     pull_data_from_github()
     
     if deduct_reseller_tokens_by_days(user_id, new_days):
         conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("UPDATE auth_keys SET unit_val = ?, duration_type = ?, created_at = ? WHERE target_id = ?", (int(parts[0]), parts[1].lower(), datetime.now().strftime("%Y-%m-%d"), str(temp['target_id'])))
-        conn.commit()
-        conn.close()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE auth_keys SET unit_val = ?, duration_type = ?, created_at = ? WHERE target_id = ?", (int(parts[0]), parts[1].lower(), datetime.now().strftime("%Y-%m-%d"), str(temp['target_id'])))
+            conn.commit()
+        finally:
+            conn.close()
         
         sync_db_to_github()
         new_balance = get_reseller_tokens(user_id)
         bot.reply_to(message, f"✅ VIP User: <b>{temp['name']}</b> ကို သက်တမ်း အသစ်လဲလှယ်ပြီးပါပြီ။\n💰 လက်ကျန်တိုကင်: <code>{new_balance}</code> Tokens", parse_mode="HTML")
     else:
-        bot.reply_to(message, "❌ Token နှုတ်ယူခြင်း မအောင်မြင်ပါ။")
+        bot.reply_to(message, "❌ Token နှုတ်ယူခြင်း မအောင်မြင်ပါ။ သက်တမ်းကုန်နေခြင်း ဖြစ်နိုင်ပါသည်။", reply_markup=get_admin_contact_markup())
     
     user_states[user_id] = None
     if user_id in reseller_temp_data: del reseller_temp_data[user_id]
@@ -724,13 +751,15 @@ def admin_reseller_delete_vip_menu(message):
     if not is_reseller(user_id): return
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    if is_admin(user_id):
-        cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys")
-    else:
-        cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys WHERE added_by = ?", (user_id,))
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        if is_admin(user_id):
+            cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys")
+        else:
+            cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys WHERE added_by = ?", (user_id,))
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
     if not rows: return bot.reply_to(message, "📭 ဖျက်ရန် VIP မရှိပါ။")
     
     res_list = "🗑 <b>လက်ရှိ VIP အသုံးပြုသူ စာရင်းများ</b>\n\n"
@@ -746,18 +775,19 @@ def process_delete_vip_by_id(message):
     if not id_to_del.isdigit(): return bot.reply_to(message, "❌ ID မှားယွင်းနေပါသည်။")
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    if is_admin(user_id):
-        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (str(id_to_del),))
-    else:
-        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ? AND added_by = ?", (str(id_to_del), user_id))
-    row = cursor.fetchone()
-    if not row:
+    try:
+        cursor = conn.cursor()
+        if is_admin(user_id):
+            cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (str(id_to_del),))
+        else:
+            cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ? AND added_by = ?", (str(id_to_del), user_id))
+        row = cursor.fetchone()
+        if not row:
+            return bot.reply_to(message, "❌ ရှာမတွေ့ပါ သို့မဟုတ် ဖျက်ခွင့်မရှိပါ။")
+        cursor.execute("DELETE FROM auth_keys WHERE target_id = ?", (str(id_to_del),))
+        conn.commit()
+    finally:
         conn.close()
-        return bot.reply_to(message, "❌ ရှာမတွေ့ပါ သို့မဟုတ် ဖျက်ခွင့်မရှိပါ။")
-    cursor.execute("DELETE FROM auth_keys WHERE target_id = ?", (str(id_to_del),))
-    conn.commit()
-    conn.close()
     
     sync_db_to_github()
     bot.reply_to(message, f"✅ VIP User: <b>{row[0]}</b> ကို ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode="HTML")
@@ -795,29 +825,32 @@ def process_one_line_reseller(message):
     
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT username FROM users WHERE tg_id = ?", (r_id,))
-    existing_reseller = cursor.fetchone()
-    
-    cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (str(r_id),))
-    existing_vip = cursor.fetchone()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT username FROM users WHERE tg_id = ?", (r_id,))
+        existing_reseller = cursor.fetchone()
+        
+        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (str(r_id),))
+        existing_vip = cursor.fetchone()
+    finally:
+        conn.close()
     
     if existing_reseller:
         user_states[admin_id] = None
-        return bot.reply_to(message, f"❌ ဤ ID သည် Reseller အဖြစ် ရှိနှင့်ပြီးသား ဖြစ်နေပါသည်။", parse_mode="HTML")
+        return bot.reply_to(message, f"❌ ဤ ID သည် Reseller အဖြစ် ရှိနှင့်ပြီးသား ဖြစ်နေပါသည်။")
 
     if existing_vip:
         user_states[admin_id] = None
-        return bot.reply_to(message, f"❌ ဤ ID သည် VIP စာရင်းထဲတွင် ရှိနေသောကြောင့် Reseller ခန့်၍မရပါ။", parse_mode="HTML")
+        return bot.reply_to(message, f"❌ ဤ ID သည် VIP စာရင်းထဲတွင် ရှိနေသောကြောင့် Reseller ခန့်၍မရပါ။")
 
     try:
         conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO users (tg_id, username, role, token_balance, expire_date) VALUES (?, ?, 'reseller', ?, ?)", (r_id, r_name, r_tokens, r_date))
-        conn.commit()
-        conn.close()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO users (tg_id, username, role, token_balance, expire_date) VALUES (?, ?, 'reseller', ?, ?)", (r_id, r_name, r_tokens, r_date))
+            conn.commit()
+        finally:
+            conn.close()
         
         success_msg = (
             f"✅ <b>Reseller အကောင့်ကို အောင်မြင်စွာ ဖန်တီးပြီးပါပြီ!</b>\n\n"
@@ -837,24 +870,28 @@ def admin_view_resellers(message):
     if not is_admin(message.from_user.id): return
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT tg_id, username, token_balance, expire_date FROM users WHERE role='reseller' AND tg_id != ?", (ADMIN_ID,))
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT tg_id, username, token_balance, expire_date FROM users WHERE role='reseller' AND tg_id != ?", (ADMIN_ID,))
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
     if not rows: return bot.reply_to(message, "📭 Reseller စာရင်း လုံးဝမရှိသေးပါ။")
     res = "👥 <b>Reseller စာရင်းများနှင့် သက်တမ်းများ:</b>\n\n"
     for r in rows: res += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b>\n🪙 {r[2]} Tokens | ⏳ Exp: <code>{r[3]}</code>\n\n"
     bot.reply_to(message, res, parse_mode="HTML")
 
-# ----------------- ✏️ EDIT RESELLER (NEW FUNCTION) -----------------
+# ----------------- ✏️ EDIT RESELLER -----------------
 def admin_edit_reseller_menu(message):
     if not is_admin(message.from_user.id): return
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT tg_id, username, token_balance, expire_date FROM users WHERE role = 'reseller' AND tg_id != ?", (ADMIN_ID,))
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT tg_id, username, token_balance, expire_date FROM users WHERE role = 'reseller' AND tg_id != ?", (ADMIN_ID,))
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
     
     if not rows: return bot.reply_to(message, "📭 ပြင်ဆင်ရန် Reseller လုံးဝမရှိသေးပါ။")
     
@@ -872,10 +909,12 @@ def process_edit_reseller_id(message):
     if not target_id_str.isdigit(): return bot.reply_to(message, "❌ Telegram ID အမှန်ကို ရိုက်ပို့ပေးပါ။")
         
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT username, token_balance, expire_date FROM users WHERE tg_id = ? AND role = 'reseller'", (int(target_id_str),))
-    row = cursor.fetchone()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT username, token_balance, expire_date FROM users WHERE tg_id = ? AND role = 'reseller'", (int(target_id_str),))
+        row = cursor.fetchone()
+    finally:
+        conn.close()
     
     if not row: return bot.reply_to(message, "❌ ဤ ID ဖြင့် Reseller အား ရှာမတွေ့ပါ။")
         
@@ -912,10 +951,12 @@ def process_edit_reseller_data(message):
     
     try:
         conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("UPDATE users SET username = ?, token_balance = ?, expire_date = ? WHERE tg_id = ?", (new_name, new_tokens, new_date, temp['target_reseller_id']))
-        conn.commit()
-        conn.close()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET username = ?, token_balance = ?, expire_date = ? WHERE tg_id = ?", (new_name, new_tokens, new_date, temp['target_reseller_id']))
+            conn.commit()
+        finally:
+            conn.close()
         
         sync_resellers_to_github()
         bot.reply_to(message, f"✅ Reseller: <b>{temp['old_name']}</b> ၏ အချက်အလက်များအား အောင်မြင်စွာ အပ်ဒိတ်လုပ်ပြီးပါပြီ။", parse_mode="HTML")
@@ -925,15 +966,17 @@ def process_edit_reseller_data(message):
     user_states[admin_id] = None
     if admin_id in reseller_temp_data: del reseller_temp_data[admin_id]
 
-# ----------------- 🗑 DELETE RESELLER -----------------
+# ----------------- 🗑 DELETE RESRELLER -----------------
 def admin_delete_reseller_menu(message):
     if not is_admin(message.from_user.id): return
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT tg_id, username FROM users WHERE role = 'reseller' AND tg_id != ?", (ADMIN_ID,))
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT tg_id, username FROM users WHERE role = 'reseller' AND tg_id != ?", (ADMIN_ID,))
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
     if not rows: return bot.reply_to(message, "📭 ဖျက်ရန် Reseller မရှိပါ။")
     res_list = "👥 <b>လက်ရှိ Reseller စာရင်းများ:</b>\n\n"
     for r in rows: res_list += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b>\n"
@@ -948,15 +991,16 @@ def process_delete_reseller_by_id(message):
     if not id_to_del.isdigit(): return bot.reply_to(message, "❌ ID မှားယွင်းနေပါသည်။")
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT username FROM users WHERE tg_id = ? AND role = 'reseller'", (int(id_to_del),))
-    row = cursor.fetchone()
-    if not row:
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT username FROM users WHERE tg_id = ? AND role = 'reseller'", (int(id_to_del),))
+        row = cursor.fetchone()
+        if not row:
+            return bot.reply_to(message, "❌ ရှာမတွေ့ပါ။")
+        cursor.execute("DELETE FROM users WHERE tg_id = ?", (int(id_to_del),))
+        conn.commit()
+    finally:
         conn.close()
-        return bot.reply_to(message, "❌ ရှာမတွေ့ပါ။")
-    cursor.execute("DELETE FROM users WHERE tg_id = ?", (int(id_to_del),))
-    conn.commit()
-    conn.close()
     
     sync_resellers_to_github()
     bot.reply_to(message, f"✅ Reseller: <b>{row[0]}</b> ကို ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode="HTML")
@@ -966,10 +1010,12 @@ def admin_view_all_keys(message):
     if not is_admin(message.from_user.id): return
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys")
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys")
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
     if not rows: return bot.reply_to(message, "📭 VIP အကောင့် မရှိသေးပါ။")
     res = f"🌐 <b>VIP အသုံးပြုသူ အားလုံးစာရင်း ({len(rows)} ဦး):</b>\n\n"
     for r in rows: res += f"🆔 <code>{r[0]}</code> | 👤 <code>{r[1]}</code> | {r[2]} {r[3]}\n"
