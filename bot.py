@@ -483,13 +483,13 @@ def display_decrypt_list(message_or_call, user_id, chat_id):
         admin_markup.add(types.InlineKeyboardButton(text="💬 Contact Admin", url="https://t.me/ahlflk2025"))
         
         if isinstance(message_or_call, types.Message):
-            bot.reply_to(message_or_call, no_vip_text, reply_markup=get_main_keyboard(user_id), parse_mode="HTML")
+            bot.reply_to(message_or_call, no_vip_text, reply_markup=admin_markup, parse_mode="HTML")
         else:
-            bot.send_message(chat_id, no_vip_text, reply_markup=get_main_keyboard(user_id), parse_mode="HTML")
+            bot.send_message(chat_id, no_vip_text, reply_markup=admin_markup, parse_mode="HTML")
         return
 
     configs = get_vpn_configs()
-    welcome_text = f"👋 <b>Safe Decryptor & VIP Center မှ ကြိုဆိုပါတယ်!</b>\n\n⏳ <b>သင့်သက်တမ်းကုန်မည့်ရက်:</b> <code>{exp_status}</code>\n\nDecrypt လုပ်ချင်တဲ့ VPN Config အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ -"
+    welcome_text = f"👋 <b>Safe Decryptor & VIP Center မှ ကြိုဆိုပါတယ်!</b>\n\n⏳ <b>သင့်သက်တမ်းကုန်မည့်ရက်:</b> <code>{exp_status}</code>\n\nDecrypt လုပ်ချင်တဲ့ VPN Config အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ-"
     
     markup = types.InlineKeyboardMarkup(row_width=2)
     buttons = []
@@ -554,9 +554,9 @@ def cmd_add_vip(message):
     msg_text = (
         f"✍️ <b>VIP အသစ်ဆောက်ရန် ပုံစံတကျ စာသားပေးပို့ပါ-</b>\n"
         f"🪙 နှုန်းထား: <code>1 Day = 1 Token</code> (လက်ကျန်: <code>{current_tokens}</code> Tokens)\n\n"
-        f"Format အတိုင်း အောက်ပါစာသားကို ကူးယူပြင်ဆင်ပြီး ပို့နိုင်ပါသည် -\n"
+        f"Format အတိုင်း အောက်ပါစာသားကို ကူးယူပြင်ဆင်ပြီး ပို့နိုင်ပါသည်-\n"
         f"<code>TelegramID | VIP_Name | Unit | Duration</code>\n\n"
-        f"👇 <b>နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူရန် နမူနာ-</b>\n"
+        f"👇 <b>နမူနာ ကို နှိပ်ပြီး Copy ယူနိုင်သည်-</b>\n"
         f"<code>1234567890 | AHLFLK2025 | 30 | d</code>"
     )
     bot.reply_to(message, msg_text, parse_mode="HTML")
@@ -770,11 +770,10 @@ def admin_create_reseller(message):
     user_states[message.from_user.id] = 'w_one_line_reseller'
     
     r_msg = (
-        f"👤 <b>Reseller အသစ်ဖန်တီးရန် စာသားပေးပို့ပါ-</b>\n"
-        f"💡 (ယခု ဗားရှင်းတွင် Expire Date ပါ တစ်ပါတည်း သတ်မှတ်ရပါမည်)\n\n"
-        f"Format လမ်းညွှန် -\n"
+        f"👤 <b>Reseller အသစ်ဖန်တီးရန် စာသားပေးပို့ပါ-</b>\n\n"
+        f"✍️ Format လမ်းညွှန်-\n"
         f"<code>TelegramID | Reseller_Name | Tokens | ExpireDate(YYYY-MM-DD)</code>\n\n"
-        f"👇 <b>နှိပ်ပြီး အလွယ်တကူ Copy ကူးယူပြင်ဆင်ရန် နမူနာ-</b>\n"
+        f"👇 <b>နမူနာ ကို နှိပ်ပြီး Copy ယူနိုင်သည်-</b>\n"
         f"<code>1234567890 | MgMg_Reseller | 100 | 2026-07-02</code>"
     )
     bot.reply_to(message, r_msg, parse_mode="HTML")
@@ -888,7 +887,7 @@ def process_edit_reseller_id(message):
         f"👤 ပြင်ဆင်မည့်သူ: <b>{row[0]}</b>\n\n"
         f"✍️ <b>အချက်အလက်အသစ်များကို အောက်ပါ Format အတိုင်း ပြင်ဆင်ပို့ပေးပါ-</b>\n"
         f"<code>Reseller_Name | New_Tokens | ExpireDate(YYYY-MM-DD)</code>\n\n"
-        f"👇 <b>Copy ကူးယူပြင်ဆင်ရန် နမူနာ-</b>\n"
+        f"👇 <b>နမူနာ ကို နှိပ်ပြီး Copy ယူနိုင်သည်-</b>\n"
         f"<code>{row[0]} | {row[1]} | {row[2]}</code>"
     )
     bot.reply_to(message, edit_msg, parse_mode="HTML")
