@@ -64,7 +64,7 @@ def run_server():
     app.run(host='0.0.0.0', port=port)
 
 # ==========================================
-# 2. CRYPTO & DECRYPTION ENGINES
+# 2. CRYPTOGRAPHY & DECRYPTION ENGINE (XXTEA)
 # ==========================================
 def u32(x): return x & 0xFFFFFFFF
 
@@ -191,7 +191,7 @@ def get_vpn_configs():
     except: return []
 
 # ==========================================
-# 3. DATABASE & GITHUB SYNC SYSTEMS
+# 3. DATABASE & GITHUB SYNC SYSTEM
 # ==========================================
 def init_db():
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
@@ -318,7 +318,7 @@ def sync_resellers_to_github():
     except Exception as e: print(f"[-] Reseller Sync Error: {str(e)}")
 
 # ==========================================
-# 4. PERMISSIONS & VALIDATION SYSTEMS
+# 4. AUTHENTICATION & TOKEN LOGIC
 # ==========================================
 def calculate_days(unit, duration_type):
     if duration_type.lower() == 'm':
@@ -362,7 +362,7 @@ def check_vip_status(user_id):
                 expire_date = datetime.strptime(exp_date_str, "%Y-%m-%d").date()
                 if datetime.now().date() > expire_date:
                     return False, "Expired (Date Out)"
-                return True, f"{exp_date_str}"
+                return True, f"Reseller Staff ({exp_date_str})"
             except:
                 return False, "Date Error"
 
@@ -403,7 +403,7 @@ def deduct_reseller_tokens_by_days(user_id, required_tokens):
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
-        res = cursor.fetchone()
+        res = res = cursor.fetchone()
         if res:
             tokens, exp_date_str = res
             try:
@@ -423,7 +423,7 @@ def deduct_reseller_tokens_by_days(user_id, required_tokens):
         conn.close()
 
 # ==========================================
-# 5. TELEGRAM KEYBOARDS & MENU HANDLERS
+# 5. TELEGRAM INTERFACE & NAVIGATION MAIN
 # ==========================================
 def get_main_keyboard(user_id):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -526,34 +526,32 @@ def display_decrypt_list(message_or_call, user_id, chat_id):
 
     configs = get_vpn_configs()
     
-    welcome_text = f"👋 <b>{bot_name} မှ ကြိုဆိုပါတယ်!</b>\n\n" \
+    welcome_text = f"👋 <b>{bot_name} မှ\nနွေးထွေးစွာ ကြိုဆိုပါတယ်!</b>\n\n" \
                    f"📊 <b>အကောင့်အခြေအနေ (Account Info):</b>\n" \
                    f"👑 အဆင့်အတန်း: <b>{account_status}</b>\n" \
                    f"👤 အမည်: <b>{first_name}</b>\n" \
                    f"🆔 Telegram ID: <code>{user_id}</code>\n" \
                    f"{tokens_line}" \
-                   f"⏳ သက်တမ်းကုန်ရက်: <code>{exp_status}</code>\n\n" \
+                   f"⏳ သက်တမ်းကုန်မည့်ရက်: <code>{exp_status}</code>\n\n" \
                    f"--- <b>Decrypt Configurations List</b> ---\n" \
                    f"🛠️ Decrypt လုပ်ချင်တဲ့ VPN Config အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ-"
     
-    # [FIXED] Inline Keyboard ရော Main Reply Keyboard ပါ တစ်ပြိုင်နက် ပေါ်စေရန် ပေါင်းစပ်ပြင်ဆင်ခြင်း
-    inline_markup = types.InlineKeyboardMarkup(row_width=2)
+    markup = types.InlineKeyboardMarkup(row_width=2)
     buttons = []
     for index, vpn in enumerate(configs, start=1):
         btn = types.InlineKeyboardButton(f"[{index}] {vpn['name']}", callback_data=f"dec_{vpn['id']}")
         buttons.append(btn)
     
     for i in range(0, len(buttons), 2):
-        inline_markup.row(*buttons[i:i+2])
+        markup.row(*buttons[i:i+2])
         
-    main_text_keyboard = get_main_keyboard(user_id)
-    
     if isinstance(message_or_call, types.Message):
-        bot.send_message(chat_id, welcome_text, reply_markup=main_text_keyboard, parse_mode="HTML")
-        bot.send_message(chat_id, "👇 <b>လုပ်ဆောင်လိုသော VPN Config ကို ရွေးချယ်ပါ-</b>", reply_markup=inline_markup, parse_mode="HTML")
+        bot.reply_to(message_or_call, welcome_text, reply_markup=get_main_keyboard(user_id), parse_mode="HTML")
     else:
-        bot.send_message(chat_id, welcome_text, reply_markup=main_text_keyboard, parse_mode="HTML")
-        bot.send_message(chat_id, "👇 <b>လုပ်ဆောင်လိုသော VPN Config ကို ရွေးချယ်ပါ-</b>", reply_markup=inline_markup, parse_mode="HTML")
+        bot.send_message(chat_id, welcome_text, reply_markup=get_main_keyboard(user_id), parse_mode="HTML")
+        
+    if configs: 
+        bot.send_message(chat_id, "👇 Decrypt Configurations List:", reply_markup=markup)
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
@@ -591,7 +589,7 @@ def handle_decrypt_callback(call):
         bot.send_message(chat_id, f"❌ <b>Error:</b> <code>{str(e)}</code>\nပြဿနာတစ်စုံတစ်ရာရှိပါက Admin သို့ မေးမြန်းနိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
 
 # ==========================================
-# 6. ADMIN & RESELLER COMMAND FUNCTIONS
+# 6. RESELLER PANEL: MANAGE VIP CUSTOMERS
 # ==========================================
 def cmd_add_vip(message):
     user_id = message.from_user.id
@@ -662,7 +660,7 @@ def process_vip_add(message):
         except Exception as e: 
             bot.reply_to(message, f"❌ Database Error: {str(e)}")
     else:
-        bot.reply_to(message, "❌ တိုကင်နှုတ်ယူခြင်း မအောင်မြင်ပါ (သို့မဟုတ် သင့်သက်တမ်း ကုန်ဆုံးနေပါသည်)။", reply_markup=get_admin_contact_markup())
+        bot.reply_to(message, "❌ တိုကင်နှုတ်ယူခြင်း မအောင်မြင်ပါ (သို့မဟုတ်) သင့်သက်တမ်း ကုန်ဆုံးနေပါသည်။", reply_markup=get_admin_contact_markup())
         
     user_states[user_id] = None
 
@@ -719,7 +717,7 @@ def cmd_my_balance(message):
     
     if is_reseller(user_id) and user_id != ADMIN_ID:
         response_text += f"🪙 Credit Balance: <code>{tokens}</code> Tokens\n"
-        response_text += f"⏳ သင့် Reseller သက်တမ်းကုန်ရက်: <code>{exp_date_str}</code>"
+        response_text += f"⏳ သင့် Reseller သက်တမ်းကုန်မည့်ရက်: <code>{exp_date_str}</code>"
     else:
         response_text += f"⏳ သင့် VIP သက်တမ်းကုန်မည့်ရက်: <code>{exp_date_str}</code>"
     
@@ -809,7 +807,7 @@ def process_edit_vip_duration(message):
         
         sync_db_to_github()
         new_balance = get_reseller_tokens(user_id)
-        bot.reply_to(message, f"✅ VIP User: <b>{temp['name']}</b> ကို သက်တမ်း အသစ်လဲလှယ်ပြီးပါပြီ။\n💰 လက်ကျန်တိုကင်: <code>{new_balance}</code> Tokens", parse_mode="HTML")
+        bot.reply_to(message, f"✅ VIP User: <b>{temp['name']}</b> ကို သက်တမ်းအသစ် လဲလှယ်ပြီးပါပြီ။\n💰 လက်ကျန်တိုကင်: <code>{new_balance}</code> Tokens", parse_mode="HTML")
     else:
         bot.reply_to(message, "❌ Token နှုတ်ယူခြင်း မအောင်မြင်ပါ။ သက်တမ်းကုန်နေခြင်း ဖြစ်နိုင်ပါသည်။", reply_markup=get_admin_contact_markup())
     
@@ -863,6 +861,9 @@ def process_delete_vip_by_id(message):
     bot.reply_to(message, f"✅ VIP User: <b>{row[0]}</b> ကို ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode="HTML")
     user_states[user_id] = None
 
+# ==========================================
+# 7. MAIN ADMIN PANEL: MANAGE RESELLERS
+# ==========================================
 def admin_create_reseller(message):
     if not is_admin(message.from_user.id): return
     user_states[message.from_user.id] = 'w_one_line_reseller'
@@ -895,7 +896,6 @@ def process_one_line_reseller(message):
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
-        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
         cursor = conn.cursor()
         cursor.execute("SELECT username FROM users WHERE tg_id = ?", (r_id,))
         existing_reseller = cursor.fetchone()
@@ -927,7 +927,7 @@ def process_one_line_reseller(message):
             f"🆔 ID: {r_id}\n"
             f"👤 နာမည်: <b>{r_name}</b>\n"
             f"🪙 Tokens: {r_tokens} Tokens\n"
-            f"⏳ သက်တမ်းကုန်ရက်: {r_date}"
+            f"⏳ သက်တမ်းကုန်မည့်ရက်: {r_date}"
         )
         bot.reply_to(message, success_msg, parse_mode="HTML")
         sync_resellers_to_github()
@@ -947,7 +947,7 @@ def admin_view_resellers(message):
     finally:
         conn.close()
     if not rows: return bot.reply_to(message, "📭 Reseller စာရင်း လုံးဝမရှိသေးပါ။")
-    res = "<b>👥 Reseller စာရင်းများနှင့် သက်တမ်းများ:</b>\n\n"
+    res = "👥 <b>Reseller စာရင်းများနှင့် သက်တမ်းများ:</b>\n\n"
     for r in rows: res += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b>\n🪙 {r[2]} Tokens | ⏳ Exp: <code>{r[3]}</code>\n\n"
     bot.reply_to(message, res, parse_mode="HTML")
 
@@ -1092,6 +1092,9 @@ def admin_view_all_keys(message):
     for r in rows: res += f"🆔 <code>{r[0]}</code> | 👤 <code>{r[1]}</code> | {r[2]} {r[3]}\n"
     bot.reply_to(message, res, parse_mode="HTML")
 
+# ==========================================
+# 8. BOT POLLING & WEBHOOK EXECUTION
+# ==========================================
 if __name__ == "__main__":
     init_db()
     pull_data_from_github()
