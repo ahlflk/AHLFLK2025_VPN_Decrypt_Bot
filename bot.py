@@ -1,3 +1,9 @@
+# # All-in-One Safe Decryptor & Telegram VIP Management Bot (With Reseller Edit & Expiry Date)
+# Py By @AHLFLK2025 (Fully Fixed Reseller Bypass Leak - Token & Date Dual Protection)
+
+# ==========================================
+# 1. CONFIGURATION & CORE BOT SETUP
+# ==========================================
 import os
 import re
 import json
@@ -57,6 +63,9 @@ def run_server():
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
 
+# ==========================================
+# 2. CRYPTO & DECRYPTION ENGINES
+# ==========================================
 def u32(x): return x & 0xFFFFFFFF
 
 def _longs_to_bytes(n, include_length):
@@ -181,6 +190,9 @@ def get_vpn_configs():
     try: return json.loads(os.environ.get('VPN_CONFIGS', '[]'))
     except: return []
 
+# ==========================================
+# 3. DATABASE & GITHUB SYNC SYSTEMS
+# ==========================================
 def init_db():
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
@@ -305,6 +317,9 @@ def sync_resellers_to_github():
         requests.put(url, headers=headers, json=payload)
     except Exception as e: print(f"[-] Reseller Sync Error: {str(e)}")
 
+# ==========================================
+# 4. PERMISSIONS & VALIDATION SYSTEMS
+# ==========================================
 def calculate_days(unit, duration_type):
     if duration_type.lower() == 'm':
         return int(unit) * 30
@@ -407,11 +422,8 @@ def deduct_reseller_tokens_by_days(user_id, required_tokens):
     finally:
         conn.close()
 
-# # All-in-One Safe Decryptor & Telegram VIP Management Bot (With Reseller Edit & Expiry Date)
-# Py By @AHLFLK2025 (Fully Fixed Reseller Bypass Leak - Token & Date Dual Protection)
-
 # ==========================================
-# 1. CONFIGURATION & CORE BOT SETUP
+# 5. TELEGRAM KEYBOARDS & MENU HANDLERS
 # ==========================================
 def get_main_keyboard(user_id):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -524,19 +536,24 @@ def display_decrypt_list(message_or_call, user_id, chat_id):
                    f"--- <b>Decrypt Configurations List</b> ---\n" \
                    f"🛠️ Decrypt လုပ်ချင်တဲ့ VPN Config အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ-"
     
-    markup = types.InlineKeyboardMarkup(row_width=2)
+    # [FIXED] Inline Keyboard ရော Main Reply Keyboard ပါ တစ်ပြိုင်နက် ပေါ်စေရန် ပေါင်းစပ်ပြင်ဆင်ခြင်း
+    inline_markup = types.InlineKeyboardMarkup(row_width=2)
     buttons = []
     for index, vpn in enumerate(configs, start=1):
         btn = types.InlineKeyboardButton(f"[{index}] {vpn['name']}", callback_data=f"dec_{vpn['id']}")
         buttons.append(btn)
     
     for i in range(0, len(buttons), 2):
-        markup.row(*buttons[i:i+2])
+        inline_markup.row(*buttons[i:i+2])
         
+    main_text_keyboard = get_main_keyboard(user_id)
+    
     if isinstance(message_or_call, types.Message):
-        bot.reply_to(message_or_call, welcome_text, reply_markup=markup, parse_mode="HTML")
+        bot.send_message(chat_id, welcome_text, reply_markup=main_text_keyboard, parse_mode="HTML")
+        bot.send_message(chat_id, "👇 <b>လုပ်ဆောင်လိုသော VPN Config ကို ရွေးချယ်ပါ-</b>", reply_markup=inline_markup, parse_mode="HTML")
     else:
-        bot.send_message(chat_id, welcome_text, reply_markup=markup, parse_mode="HTML")
+        bot.send_message(chat_id, welcome_text, reply_markup=main_text_keyboard, parse_mode="HTML")
+        bot.send_message(chat_id, "👇 <b>လုပ်ဆောင်လိုသော VPN Config ကို ရွေးချယ်ပါ-</b>", reply_markup=inline_markup, parse_mode="HTML")
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
@@ -573,6 +590,9 @@ def handle_decrypt_callback(call):
     except Exception as e:
         bot.send_message(chat_id, f"❌ <b>Error:</b> <code>{str(e)}</code>\nပြဿနာတစ်စုံတစ်ရာရှိပါက Admin သို့ မေးမြန်းနိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
 
+# ==========================================
+# 6. ADMIN & RESELLER COMMAND FUNCTIONS
+# ==========================================
 def cmd_add_vip(message):
     user_id = message.from_user.id
     if not is_reseller(user_id): return
@@ -875,6 +895,7 @@ def process_one_line_reseller(message):
     pull_data_from_github()
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
+        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
         cursor = conn.cursor()
         cursor.execute("SELECT username FROM users WHERE tg_id = ?", (r_id,))
         existing_reseller = cursor.fetchone()
@@ -926,7 +947,7 @@ def admin_view_resellers(message):
     finally:
         conn.close()
     if not rows: return bot.reply_to(message, "📭 Reseller စာရင်း လုံးဝမရှိသေးပါ။")
-    res = "👥 <b>Reseller စာရင်းများနှင့် သက်တမ်းများ:</b>\n\n"
+    res = "<b>👥 Reseller စာရင်းများနှင့် သက်တမ်းများ:</b>\n\n"
     for r in rows: res += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b>\n🪙 {r[2]} Tokens | ⏳ Exp: <code>{r[3]}</code>\n\n"
     bot.reply_to(message, res, parse_mode="HTML")
 
