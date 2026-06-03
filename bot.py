@@ -1,9 +1,3 @@
-# # All-in-One Safe Decryptor & Telegram VIP Management Bot (With Reseller Edit & Expiry Date)
-# Py By @AHLFLK2025 (Fully Fixed Reseller Bypass Leak - Token & Date Dual Protection)
-
-# ==========================================
-# 1. CONFIGURATION & CORE BOT SETUP
-# ==========================================
 import os
 import re
 import json
@@ -63,9 +57,6 @@ def run_server():
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
 
-# ==========================================
-# 2. CRYPTOGRAPHY & DECRYPTION ENGINE (XXTEA)
-# ==========================================
 def u32(x): return x & 0xFFFFFFFF
 
 def _longs_to_bytes(n, include_length):
@@ -190,9 +181,6 @@ def get_vpn_configs():
     try: return json.loads(os.environ.get('VPN_CONFIGS', '[]'))
     except: return []
 
-# ==========================================
-# 3. DATABASE & GITHUB SYNC SYSTEM
-# ==========================================
 def init_db():
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
@@ -317,9 +305,6 @@ def sync_resellers_to_github():
         requests.put(url, headers=headers, json=payload)
     except Exception as e: print(f"[-] Reseller Sync Error: {str(e)}")
 
-# ==========================================
-# 4. AUTHENTICATION & TOKEN LOGIC
-# ==========================================
 def calculate_days(unit, duration_type):
     if duration_type.lower() == 'm':
         return int(unit) * 30
@@ -362,7 +347,7 @@ def check_vip_status(user_id):
                 expire_date = datetime.strptime(exp_date_str, "%Y-%m-%d").date()
                 if datetime.now().date() > expire_date:
                     return False, "Expired (Date Out)"
-                return True, f"Reseller Staff ({exp_date_str})"
+                return True, f"{exp_date_str}"
             except:
                 return False, "Date Error"
 
@@ -403,7 +388,7 @@ def deduct_reseller_tokens_by_days(user_id, required_tokens):
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
-        res = res = cursor.fetchone()
+        res = cursor.fetchone()
         if res:
             tokens, exp_date_str = res
             try:
@@ -422,8 +407,11 @@ def deduct_reseller_tokens_by_days(user_id, required_tokens):
     finally:
         conn.close()
 
+# # All-in-One Safe Decryptor & Telegram VIP Management Bot (With Reseller Edit & Expiry Date)
+# Py By @AHLFLK2025 (Fully Fixed Reseller Bypass Leak - Token & Date Dual Protection)
+
 # ==========================================
-# 5. TELEGRAM INTERFACE & NAVIGATION MAIN
+# 1. CONFIGURATION & CORE BOT SETUP
 # ==========================================
 def get_main_keyboard(user_id):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -496,8 +484,17 @@ def display_decrypt_list(message_or_call, user_id, chat_id):
     except:
         bot_name = "Safe Decryptor & VIP Center"
     
+    if isinstance(message_or_call, types.Message):
+        first_name = message_or_call.from_user.first_name
+    else:
+        first_name = message_or_call.from_user.first_name if hasattr(message_or_call, 'from_user') else "User"
+
     if not is_vip:
-        no_vip_text = f"🚫 <b>သင်သည် VIP စနစ်အသုံးပြုခွင့် မရှိသေးပါ (သို့မဟုတ်) သက်တမ်းကုန်သွားပါပြီ!</b>\n\nသင့်ရဲ့ Telegram ID: <code>{user_id}</code>\nအခြေအနေ: <b>{exp_status}</b>\n\nAdmin ထံဆက်သွယ်၍ သက်တမ်းတိုးမြှင့်/ဝယ်ယူနိုင်ပါသည်။"
+        no_vip_text = f"🚫 <b>သင်သည် VIP စနစ်အသုံးပြုခွင့် မရှိသေးပါ (သို့မဟုတ်) သက်တမ်းကုန်သွားပါပြီ!</b>\n\n" \
+                      f"👤 အမည်: <b>{first_name}</b>\n" \
+                      f"🆔 Telegram ID: <code>{user_id}</code>\n" \
+                      f"📊 အခြေအနေ: <b>{exp_status}</b>\n\n" \
+                      f"Admin ထံဆက်သွယ်၍ သက်တမ်းတိုးမြှင့်/ဝယ်ယူနိုင်ပါသည်။"
         
         if isinstance(message_or_call, types.Message):
             bot.reply_to(message_or_call, no_vip_text, reply_markup=get_admin_contact_markup(), parse_mode="HTML")
@@ -505,8 +502,27 @@ def display_decrypt_list(message_or_call, user_id, chat_id):
             bot.send_message(chat_id, no_vip_text, reply_markup=get_admin_contact_markup(), parse_mode="HTML")
         return
 
+    account_status = "VIP User VIP ✨"
+    tokens_line = ""
+    
+    if is_admin(user_id):
+        account_status = "Main Admin 👑"
+    elif is_reseller(user_id):
+        account_status = "Reseller Staff 💼"
+        tokens = get_reseller_tokens(user_id)
+        tokens_line = f"🪙 Credit Balance: <code>{tokens}</code> Tokens\n"
+
     configs = get_vpn_configs()
-    welcome_text = f"👋 <b>{bot_name} မှ\nနွေးထွေးစွာ ကြိုဆိုပါတယ်!</b>\n\n⏳ <b>သင့်သက်တမ်းကုန်မည့်ရက်:</b> <code>{exp_status}</code>\n\n🛠️ Decrypt လုပ်ချင်တဲ့ VPN Config\nအမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ-"
+    
+    welcome_text = f"👋 <b>{bot_name} မှ ကြိုဆိုပါတယ်!</b>\n\n" \
+                   f"📊 <b>အကောင့်အခြေအနေ (Account Info):</b>\n" \
+                   f"👑 အဆင့်အတန်း: <b>{account_status}</b>\n" \
+                   f"👤 အမည်: <b>{first_name}</b>\n" \
+                   f"🆔 Telegram ID: <code>{user_id}</code>\n" \
+                   f"{tokens_line}" \
+                   f"⏳ သက်တမ်းကုန်ရက်: <code>{exp_status}</code>\n\n" \
+                   f"--- <b>Decrypt Configurations List</b> ---\n" \
+                   f"🛠️ Decrypt လုပ်ချင်တဲ့ VPN Config အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ-"
     
     markup = types.InlineKeyboardMarkup(row_width=2)
     buttons = []
@@ -518,12 +534,9 @@ def display_decrypt_list(message_or_call, user_id, chat_id):
         markup.row(*buttons[i:i+2])
         
     if isinstance(message_or_call, types.Message):
-        bot.reply_to(message_or_call, welcome_text, reply_markup=get_main_keyboard(user_id), parse_mode="HTML")
+        bot.reply_to(message_or_call, welcome_text, reply_markup=markup, parse_mode="HTML")
     else:
-        bot.send_message(chat_id, welcome_text, reply_markup=get_main_keyboard(user_id), parse_mode="HTML")
-        
-    if configs: 
-        bot.send_message(chat_id, "👇 Decrypt Configurations List:", reply_markup=markup)
+        bot.send_message(chat_id, welcome_text, reply_markup=markup, parse_mode="HTML")
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
@@ -560,9 +573,6 @@ def handle_decrypt_callback(call):
     except Exception as e:
         bot.send_message(chat_id, f"❌ <b>Error:</b> <code>{str(e)}</code>\nပြဿနာတစ်စုံတစ်ရာရှိပါက Admin သို့ မေးမြန်းနိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
 
-# ==========================================
-# 6. RESELLER PANEL: MANAGE VIP CUSTOMERS
-# ==========================================
 def cmd_add_vip(message):
     user_id = message.from_user.id
     if not is_reseller(user_id): return
@@ -833,9 +843,6 @@ def process_delete_vip_by_id(message):
     bot.reply_to(message, f"✅ VIP User: <b>{row[0]}</b> ကို ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode="HTML")
     user_states[user_id] = None
 
-# ==========================================
-# 7. MAIN ADMIN PANEL: MANAGE RESELLERS
-# ==========================================
 def admin_create_reseller(message):
     if not is_admin(message.from_user.id): return
     user_states[message.from_user.id] = 'w_one_line_reseller'
@@ -1064,9 +1071,6 @@ def admin_view_all_keys(message):
     for r in rows: res += f"🆔 <code>{r[0]}</code> | 👤 <code>{r[1]}</code> | {r[2]} {r[3]}\n"
     bot.reply_to(message, res, parse_mode="HTML")
 
-# ==========================================
-# 8. BOT POLLING & WEBHOOK EXECUTION
-# ==========================================
 if __name__ == "__main__":
     init_db()
     pull_data_from_github()
