@@ -431,6 +431,9 @@ def get_main_keyboard(user_id):
     
     if is_vip or is_admin(user_id):
         markup.row(types.KeyboardButton("🌐 VPN Decrypt List"))
+        
+    if is_vip and not is_reseller(user_id):
+        markup.row(types.KeyboardButton("💰 My Balance"))
     
     if is_reseller(user_id) and (is_vip or user_id == ADMIN_ID):
         markup.row(types.KeyboardButton("➕ Add VIP User"), types.KeyboardButton("🔑 My VIP Users"))
@@ -650,44 +653,48 @@ def cmd_my_vips(message):
 
 def cmd_my_balance(message):
     user_id = message.from_user.id
-    if not is_reseller(user_id): return
     pull_data_from_github()
     
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    is_vip, exp_status = check_vip_status(user_id)
     tokens = 0
-    exp_date_str = "Unknown"
-    is_expired = False
+    exp_date_str = exp_status
+    is_expired = not is_vip
     
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
-        row = cursor.fetchone()
-        if row:
-            tokens = row[0]
-            exp_date_str = row[1]
-            try:
-                expire_date = datetime.strptime(exp_date_str, "%Y-%m-%d")
-                if datetime.now() > expire_date:
+    if is_reseller(user_id):
+        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
+            row = cursor.fetchone()
+            if row:
+                tokens = row[0]
+                exp_date_str = row[1]
+                try:
+                    expire_date = datetime.strptime(exp_date_str, "%Y-%m-%d")
+                    if datetime.now() > expire_date:
+                        is_expired = True
+                except:
                     is_expired = True
-            except:
-                is_expired = True
-    except Exception as e:
-        print(f"[-] Balance Check Error: {str(e)}")
-        is_expired = True
-    finally:
-        conn.close()
+        except Exception as e:
+            print(f"[-] Balance Check Error: {str(e)}")
+            is_expired = True
+        finally:
+            conn.close()
 
-    needs_contact_admin = (is_expired or tokens <= 0) and (user_id != ADMIN_ID)
+    needs_contact_admin = is_expired and (user_id != ADMIN_ID)
 
-    response_text = (
-        f"💰 <b>သင့်အကောင့်အခြေအနေ (Reseller Balance):</b>\n\n"
-        f"👤 အမည်: {message.from_user.first_name}\n"
-        f"🪙 Credit Balance: <code>{tokens}</code> Tokens\n"
-        f"⏳ သင့်သက်တမ်းကုန်မည့်ရက်: <code>{exp_date_str}</code>"
-    )
+    response_text = f"💰 <b>သင့်အကောင့်အခြေအနေ (Account Info):</b>\n\n" \
+                    f"👤 အမည်: {message.from_user.first_name}\n" \
+                    f"🆔 Telegram ID: <code>{user_id}</code>\n"
+    
+    if is_reseller(user_id) and user_id != ADMIN_ID:
+        response_text += f"🪙 Credit Balance: <code>{tokens}</code> Tokens\n"
+        response_text += f"⏳ သင့် Reseller သက်တမ်းကုန်ရက်: <code>{exp_date_str}</code>"
+    else:
+        response_text += f"⏳ သင့် VIP သက်တမ်းကုန်မည့်ရက်: <code>{exp_date_str}</code>"
     
     if needs_contact_admin:
-        response_text += "\n\n⚠️ <b>သင့်အကောင့်သည် သက်တမ်းကုန်ဆုံးနေခြင်း (သို့မဟုတ်) တိုကင်ကုန်ဆုံးနေခြင်း ဖြစ်ပေါ်နေပါသည်။</b>"
+        response_text += "\n\n⚠️ <b>သင့်အကောင့်သည် သက်တမ်းကုန်ဆုံးနေခြင်း (သို့မဟုတ်) အသုံးပြုခွင့်မရှိခြင်း ဖြစ်ပေါ်နေပါသည်။</b>"
         admin_markup = types.InlineKeyboardMarkup()
         admin_markup.add(types.InlineKeyboardButton(text="💬 Contact Admin", url="https://t.me/ahlflk2025"))
         bot.reply_to(message, response_text, reply_markup=admin_markup, parse_mode="HTML")
