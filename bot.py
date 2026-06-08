@@ -776,11 +776,11 @@ def view_all_resellers(message):
 if __name__ == "__main__":
     init_db()
     pull_data_from_google_sheet()
-    
-    # Run Web Server Webhook in background thread
-    server_thread = Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080))))
-    server_thread.daemon = True
-    server_thread.start()
-    
-    print("[+] Bot running and syncing with Google Sheets successfully...")
-    bot.infinity_polling(skip_pending=True)
+    if PUBLIC_URL and BOT_TOKEN:
+        try:
+            bot.remove_webhook()
+            bot.set_webhook(url=PUBLIC_URL)
+        except: pass
+        app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+    else:
+        bot.infinity_polling()
