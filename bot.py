@@ -19,15 +19,16 @@ import telebot
 from telebot import types
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_ID = 5376544115
-DEFAULT_CREDITS = 100  
+ADMIN_ID = int(os.environ.get("TGC_ID")) if os.environ.get("TGC_ID") else None
+DEFAULT_CREDITS = 100
 
-GITHUB_TOKEN = os.getenv("GH_TOKEN") 
-REPO_OWNER = "ahlflk" 
-REPO_NAME = "AHLFLK2025_VPN_Decrypt_Bot" 
-FILE_PATH = "key.txt" 
-RESELLER_FILE_PATH = "resellers.txt" 
+GITHUB_TOKEN = os.environ.get("GH_TOKEN")
+REPO_OWNER = "ahlflk"
+REPO_NAME = "AHLFLK2025_VPN_Decrypt_Bot"
+FILE_PATH = "key.txt"
+RESELLER_FILE_PATH = "resellers.txt"
 
+VPN_CONFIGS = os.environ.get("VPN_CONFIGS")
 PUBLIC_URL = os.environ.get("PUBLIC_URL")
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode=None)
@@ -187,9 +188,12 @@ def perform_decryption(config_url, outer_key, outer_delta_raw, method):
     return {"AHLFLK": "Decrypted By @AHLFLK2025", **process_json_structure(json_obj, method)}
 
 def get_vpn_configs():
-    try: return json.loads(os.environ.get('VPN_CONFIGS', '[]'))
-    except: return []
-
+    try: 
+        return json.loads(VPN_CONFIGS) if VPN_CONFIGS else []
+    except Exception as e: 
+        print(f"[-] VPN Configs Parse Error: {str(e)}")
+        return []
+        
 # ==========================================
 # 3. DATABASE & GITHUB SYNC SYSTEM
 # ==========================================
