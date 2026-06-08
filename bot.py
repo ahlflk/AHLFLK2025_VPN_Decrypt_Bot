@@ -732,26 +732,13 @@ def handle_state_inputs(message):
 if __name__ == "__main__":
     init_db()
     pull_data_from_google_sheet()
-    
-    # Run Webhook Server inside a thread
-    srv_thread = Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080))))
-    srv_thread.daemon = True
-    srv_thread.start()
-    
-    # Remove webhook and reset
-    bot.remove_webhook()
     if PUBLIC_URL:
-        import time
-        time.sleep(1)
-        bot.set_webhook(url=f"{PUBLIC_URL}/{BOT_TOKEN}")
-        print(f"[+] Webhook successfully set to: {PUBLIC_URL}")
-    else:
-        print("[!] PUBLIC_URL is missing, polling or manual setting required.")
-    
-    # Keep main alive
-    while True:
         try:
-            import time
-            time.sleep(10)
-        except KeyboardInterrupt:
-            break
+            bot.remove_webhook()
+            bot.set_webhook(url=f"{PUBLIC_URL}/{BOT_TOKEN}")
+        except Exception as e: print(f"[-] Webhook Error: {str(e)}")
+        port = int(os.environ.get('PORT', 8080))
+        app.run(host='0.0.0.0', port=port)
+    else:
+        bot.remove_webhook()
+        bot.infinity_polling()
