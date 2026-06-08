@@ -1,5 +1,5 @@
-# # All-in-One Safe Decryptor & Telegram VIP Management Bot (With Reseller Edit & Expiry Date)
-# Py By @AHLFLK2025 (Fully Fixed Reseller Bypass Leak - Token & Date Dual Protection)
+# # All-in-One Safe Decryptor & Telegram VIP Management Bot (Google Sheet Sync Version)
+# Py By @AHLFLK2025 (Fully Fixed Reseller Bypass Leak - Google Sheet Version)
 
 # ==========================================
 # 1. CONFIGURATION & CORE BOT SETUP
@@ -20,14 +20,7 @@ from telebot import types
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = int(os.environ.get("TGC_ID")) if os.environ.get("TGC_ID") else None
-DEFAULT_CREDITS = 100
-
-GITHUB_TOKEN = os.environ.get("GH_TOKEN")
-REPO_OWNER = "ahlflk"
-REPO_NAME = "AHLFLK2025_VPN_Decrypt_Bot"
-FILE_PATH = "key.txt"
-RESELLER_FILE_PATH = "resellers.txt"
-
+SCRIPT_URL = os.environ.get("SCRIPT_URL")  # Google Apps Script Web App URL
 VPN_CONFIGS = os.environ.get("VPN_CONFIGS")
 PUBLIC_URL = os.environ.get("PUBLIC_URL")
 
@@ -39,30 +32,28 @@ DB_FILE = os.path.join(BASE_DIR, "keys_management.db")
 
 user_states = {}
 reseller_temp_data = {}
-MENU_BUTTONS = ["🌐 VPN Decrypt List", "➕ Add VIP User", "🔑 My VIP Users", "✏️ Edit VIP", "🗑 Delete VIP", "👤 Create Reseller", "📊 Reseller List", "✏️ Edit Reseller", "🗑 Delete Reseller", "🌐 View All VIPs", "💰 My Balance"]
+vip_temp_data = {}
+
+MENU_BUTTONS = [
+    "🌐 VPN Decrypt List", "➕ Add VIP User", "🔑 My VIP Users", 
+    "✏️ Edit VIP", "🗑 Delete VIP", "👤 Create Reseller", 
+    "📊 Reseller List", "✏️ Edit Reseller", "🗑 Delete Reseller", 
+    "🌐 View All VIPs", "💰 My Balance"
+]
 
 def get_admin_contact_markup():
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton(text="💬 Contact Admin", url="https://t.me/ahlflk2025"))
     return markup
 
-@app.route('/')
-def home():
-    return "VIP & Reseller Date-Locked Bot is Active!"
-
-@app.route('/' + BOT_TOKEN, methods=['POST'])
+@app.route('/', methods=['GET', 'POST'])
 def webhook():
-    if request.headers.get('content-type') == 'application/json':
+    if request.method == 'POST':
         json_string = request.get_data().decode('utf-8')
-        update = types.Update.de_json(json_string)
+        update = telebot.types.Update.de_json(json_string)
         bot.process_new_updates([update])
-        return ''
-    else:
-        abort(403)
-
-def run_server():
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
+        return '', 200
+    return "Decrypt & VPN VIP Sheet Bot is Active!", 200
 
 # ==========================================
 # 2. CRYPTOGRAPHY & DECRYPTION ENGINE (XXTEA)
@@ -193,922 +184,574 @@ def get_vpn_configs():
     except Exception as e: 
         print(f"[-] VPN Configs Parse Error: {str(e)}")
         return []
-        
+
 # ==========================================
-# 3. DATABASE & GITHUB SYNC SYSTEM
+# 3. DATABASE INITIALIZATION & GOOGLE SHEET SYNC
 # ==========================================
 def init_db():
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
+        # auth_keys Structure aligned with Bot2 for Sheet Compatibility
         cursor.execute('''CREATE TABLE IF NOT EXISTS auth_keys (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, 
-            target_id TEXT UNIQUE,
+            target_id TEXT,
             key_string TEXT, 
-            unit_val TEXT, 
-            duration_type TEXT, 
-            added_by INTEGER,
-            created_at TEXT
+            vpn_key TEXT PRIMARY KEY,
+            unit_val INTEGER, 
+            created_at TEXT,
+            added_by TEXT
         )''')
         
-        cursor.execute('''CREATE TABLE IF NOT EXISTS users (
-            tg_id INTEGER PRIMARY KEY, 
+        # Resellers table from Bot2
+        cursor.execute('''CREATE TABLE IF NOT EXISTS resellers (
+            reseller_id TEXT PRIMARY KEY, 
             username TEXT, 
-            role TEXT,
-            token_balance INTEGER DEFAULT 0,
-            expire_date TEXT DEFAULT '2099-12-31'
+            credits INTEGER,
+            created_by TEXT
         )''')
-        cursor.execute("INSERT OR IGNORE INTO users (tg_id, username, role, token_balance, expire_date) VALUES (?, ?, ?, ?, ?)", (ADMIN_ID, 'Main_Admin', 'admin', 9999999, '2099-12-31'))
         conn.commit()
     finally:
         conn.close()
 
-def pull_data_from_github():
-    headers = {"Accept": "application/vnd.github.v3+json"}
-    if GITHUB_TOKEN: headers["Authorization"] = f"token {GITHUB_TOKEN}"
-    
+def pull_data_from_google_sheet():
+    if not SCRIPT_URL: return
     try:
-        url_keys = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FILE_PATH}"
-        res_k = requests.get(url_keys, headers=headers)
-        file_content_keys = res_k.json().get("content", "") if res_k.status_code == 200 else None
-        if file_content_keys: file_content_keys = base64.b64decode(file_content_keys).decode("utf-8")
-        else:
-            res_raw = requests.get(f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/main/{FILE_PATH}")
-            if res_raw.status_code == 200: file_content_keys = res_raw.text
-
-        if file_content_keys:
+        res = requests.get(SCRIPT_URL, timeout=15)
+        if res.status_code == 200:
+            data_list = res.json()
+            if isinstance(data_list, dict) and "error" in data_list: return
+            
             conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-            try:
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM auth_keys")
-                for line in file_content_keys.split("\n"):
-                    if " | " in line:
-                        parts = [p.strip() for p in line.split("|")]
-                        if len(parts) >= 4:
-                            owner = int(parts[4]) if len(parts) >= 5 and parts[4].isdigit() else ADMIN_ID
-                            cdate = parts[5] if len(parts) == 6 else datetime.now().strftime("%Y-%m-%d")
-                            cursor.execute("INSERT OR IGNORE INTO auth_keys (target_id, key_string, unit_val, duration_type, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)", (parts[0], parts[1], parts[2], parts[3], owner, cdate))
-                conn.commit()
-            finally:
-                conn.close()
-    except Exception as e: print(f"[-] Pull Keys Error: {str(e)}")
-
-    try:
-        url_resellers = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{RESELLER_FILE_PATH}"
-        res_r = requests.get(url_resellers, headers=headers)
-        file_content_resellers = res_r.json().get("content", "") if res_r.status_code == 200 else None
-        if file_content_resellers: file_content_resellers = base64.b64decode(file_content_resellers).decode("utf-8")
-        else:
-            res_raw = requests.get(f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}/main/{RESELLER_FILE_PATH}")
-            if res_raw.status_code == 200: file_content_resellers = res_raw.text
-
-        if file_content_resellers:
-            conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-            try:
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM users WHERE tg_id != ?", (ADMIN_ID,))
-                for line in file_content_resellers.split("\n"):
-                    if " | " in line:
-                        parts = [p.strip() for p in line.split("|")]
-                        if parts[0].isdigit():
-                            tg_id_val = int(parts[0])
-                            tokens = int(parts[2]) if len(parts) >= 3 and parts[2].isdigit() else DEFAULT_CREDITS
-                            exp_d = parts[3] if len(parts) == 4 else (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
-                            role_val = 'admin' if tg_id_val == ADMIN_ID else 'reseller'
-                            cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, token_balance, expire_date) VALUES (?, ?, ?, ?, ?)", (tg_id_val, parts[1], role_val, tokens, exp_d))
-                conn.commit()
-            finally:
-                conn.close()
-    except Exception as e: print(f"[-] Pull Resellers Error: {str(e)}")
-
-def sync_db_to_github():
-    try:
-        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-        try:
             cursor = conn.cursor()
-            cursor.execute("SELECT target_id, key_string, unit_val, duration_type, added_by, created_at FROM auth_keys")
-            rows = cursor.fetchall()
-        finally:
+            
+            existing_vip_owners = {}
+            cursor.execute("SELECT vpn_key, added_by FROM auth_keys WHERE added_by IS NOT NULL")
+            for r in cursor.fetchall():
+                existing_vip_owners[r[0]] = r[1]
+                
+            cursor.execute("DELETE FROM auth_keys")
+            cursor.execute("DELETE FROM resellers")
+            
+            for row in data_list:
+                t_id = row.get("Users")
+                k_str = row.get("Name") or ""
+                key_apk = row.get("Key") or ""
+                c_at = row.get("Start") or ""
+                m_val = row.get("Month") or 0
+                
+                if not t_id or t_id.strip() == "":
+                    if "_Reseller" in str(k_str): t_id = "0" 
+                    else: continue
+                
+                t_id = str(t_id).strip()
+                
+                if "_Reseller" in str(k_str):
+                    try:
+                        clean_name = str(k_str).replace("_Reseller", "").strip()
+                        clean_months = int(float(m_val)) if '.' in str(m_val) else int(m_val)
+                        cursor.execute("INSERT OR REPLACE INTO resellers VALUES (?, ?, ?, ?)", 
+                                       (t_id, clean_name, clean_months, str(ADMIN_ID)))
+                    except: pass
+                
+                elif key_apk and key_apk != "RESELLER_ACCOUNT":
+                    try:
+                        clean_months = int(float(m_val)) if str(m_val).replace('.','',1).isdigit() else 1
+                        owner_id = existing_vip_owners.get(str(key_apk).strip(), str(ADMIN_ID))
+                        cursor.execute(
+                            "INSERT OR REPLACE INTO auth_keys (target_id, key_string, vpn_key, unit_val, created_at, added_by) VALUES (?, ?, ?, ?, ?, ?)",
+                            (t_id, str(k_str).strip(), str(key_apk).strip(), clean_months, str(c_at).strip(), str(owner_id))
+                        )
+                    except: pass
+                        
+            conn.commit()
             conn.close()
-        
-        content = "\n".join([f"{r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} | {r[5]}" for r in rows])
-        url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{FILE_PATH}"
-        headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
-        res = requests.get(url, headers=headers)
-        sha = res.json().get('sha') if res.status_code == 200 else None
-        payload = {"message": "Sync VIP Keys", "content": base64.b64encode(content.encode('utf-8')).decode('utf-8')}
-        if sha: payload["sha"] = sha
-        requests.put(url, headers=headers, json=payload)
-    except Exception as e: print(f"[-] Sync Error: {str(e)}")
+    except Exception as e: print(f"[-] Pull Sheet Error: {str(e)}")
 
-def sync_resellers_to_github():
+def push_to_google_sheet(action, users, name, key, start, month, is_reseller_mode=False):
+    if not SCRIPT_URL: return False
+    payload = {
+        "action": "sync_reseller" if is_reseller_mode else action,
+        "users": str(users),
+        "name": str(name),
+        "key": str(key),
+        "start": str(start),
+        "month": int(month),
+        "added_by": str(users) if is_reseller_mode else ""
+    }
     try:
-        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-        try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT tg_id, username, token_balance, expire_date FROM users")
-            rows = cursor.fetchall()
-        finally:
-            conn.close()
-        
-        content = "\n".join([f"{r[0]} | {r[1]} | {r[2]} | {r[3]}" for r in rows])
-        url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{RESELLER_FILE_PATH}"
-        headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
-        res = requests.get(url, headers=headers)
-        sha = res.json().get('sha') if res.status_code == 200 else None
-        payload = {"message": "Sync Resellers", "content": base64.b64encode(content.encode('utf-8')).decode('utf-8')}
-        if sha: payload["sha"] = sha
-        requests.put(url, headers=headers, json=payload)
-    except Exception as e: print(f"[-] Reseller Sync Error: {str(e)}")
+        res = requests.post(SCRIPT_URL, json=payload, timeout=15)
+        return res.status_code == 200
+    except:
+        return False
 
 # ==========================================
-# 4. AUTHENTICATION & TOKEN LOGIC
+# 4. AUTHENTICATION & ROLE LOGIC
 # ==========================================
-def calculate_days(unit, duration_type):
-    if duration_type.lower() == 'm':
-        return int(unit) * 30
-    return int(unit)
-
-def is_admin(user_id): 
-    if user_id == ADMIN_ID: return True
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT role FROM users WHERE tg_id = ? AND role = 'admin'", (user_id,))
-        res = cursor.fetchone()
-    finally:
-        conn.close()
-    return res is not None
+def is_admin(user_id):
+    return int(user_id) == ADMIN_ID
 
 def is_reseller(user_id):
-    if user_id == ADMIN_ID: return True
+    if int(user_id) == ADMIN_ID: return True
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT role FROM users WHERE tg_id = ? AND (role = 'reseller' OR role = 'admin')", (user_id,))
-        res = cursor.fetchone()
-    finally:
-        conn.close()
-    return res is not None
-
-def check_vip_status(user_id):
-    if user_id == ADMIN_ID: return True, "Unlimited (Admin)"
-    
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT role, token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
-        user_row = cursor.fetchone()
-        
-        if user_row and user_row[0] == 'reseller':
-            exp_date_str = user_row[2]
-            try:
-                expire_date = datetime.strptime(exp_date_str, "%Y-%m-%d").date()
-                if datetime.now().date() > expire_date:
-                    return False, "Expired (Date Out)"
-                return True, f"Reseller Staff ({exp_date_str})"
-            except:
-                return False, "Date Error"
-
-        cursor.execute("SELECT unit_val, duration_type, created_at FROM auth_keys WHERE target_id = ?", (str(user_id),))
-        row = cursor.fetchone()
-        
-        if not row: return False, "Not VIP"
-        
-        unit_val, duration_type, created_at_str = row
-        try:
-            created_date = datetime.strptime(created_at_str, "%Y-%m-%d").date()
-            days_to_add = calculate_days(unit_val, duration_type)
-            expire_date = created_date + timedelta(days=days_to_add)
-            
-            if datetime.now().date() <= expire_date:
-                return True, expire_date.strftime("%Y-%m-%d")
-            else:
-                return False, "Expired"
-        except: return False, "Error Check"
-    finally:
-        conn.close()
+        cursor.execute("SELECT reseller_id FROM resellers WHERE reseller_id = ?", (str(user_id),))
+        return cursor.fetchone() is not None
+    except: return False
+    finally: conn.close()
 
 def get_reseller_tokens(user_id):
-    if user_id == ADMIN_ID: return 9999999
+    if int(user_id) == ADMIN_ID: return 999999
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT token_balance FROM users WHERE tg_id = ?", (user_id,))
-        res = cursor.fetchone()
-    finally:
-        conn.close()
-    return res[0] if res else 0
+        cursor.execute("SELECT credits FROM resellers WHERE reseller_id = ?", (str(user_id),))
+        row = cursor.fetchone()
+        return row[0] if row else 0
+    except: return 0
+    finally: conn.close()
 
-def deduct_reseller_tokens_by_days(user_id, required_tokens):
-    if user_id == ADMIN_ID: return True
+def check_vip_status(user_id):
+    """ Returns (is_vip, status_string/expire_date) """
+    if int(user_id) == ADMIN_ID: return True, "Unlimited (Admin)"
     
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
-        res = res = cursor.fetchone()
-        if res:
-            tokens, exp_date_str = res
-            try:
-                expire_date = datetime.strptime(exp_date_str, "%Y-%m-%d").date()
-                if datetime.now().date() > expire_date:
-                    return False 
-            except: 
-                return False
-                
-            if tokens >= required_tokens:
-                cursor.execute("UPDATE users SET token_balance = token_balance - ? WHERE tg_id = ?", (required_tokens, user_id))
-                conn.commit()
-                sync_resellers_to_github()
-                return True
-        return False
-    finally:
-        conn.close()
+        cursor.execute("SELECT key_string, vpn_key, unit_val, created_at FROM auth_keys WHERE target_id = ?", (str(user_id),))
+        rows = cursor.fetchall()
+        if rows:
+            last_row = rows[-1]
+            exp = get_expired_date_string(last_row[3], last_row[2])
+            if exp != "သက်တမ်းမရှိပါ":
+                try:
+                    exp_date = datetime.strptime(exp, "%Y-%m-%d").date()
+                    if datetime.now().date() > exp_date:
+                        return False, "Expired"
+                except: pass
+            return True, exp
+        return False, "Not VIP"
+    except: return False, "Error Check"
+    finally: conn.close()
+
+def get_expired_date_string(created_str, months_val):
+    try:
+        if not created_str or created_str.strip() == "":
+            created_str = datetime.now().strftime("%Y-%m-%d")
+        if "-" in created_str:
+            dt = datetime.strptime(created_str.strip(), "%Y-%m-%d")
+        elif "/" in created_str:
+            dt = datetime.strptime(created_str.strip(), "%d/%m/%Y")
+        else:
+            dt = datetime.now()
+        exp = dt + timedelta(days=int(months_val) * 30)
+        return exp.strftime("%Y-%m-%d")
+    except:
+        return "သက်တမ်းမရှိပါ"
 
 # ==========================================
-# 5. TELEGRAM INTERFACE & NAVIGATION MAIN
+# 5. TELEGRAM INTERFACE & KEYBOARDS
 # ==========================================
 def get_main_keyboard(user_id):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     is_vip, _ = check_vip_status(user_id)
     
-    if is_vip or is_admin(user_id):
+    if is_admin(user_id):
         markup.row(types.KeyboardButton("🌐 VPN Decrypt List"))
-        
-    if is_vip and not is_reseller(user_id):
-        markup.row(types.KeyboardButton("💰 My Balance"))
-    
-    if is_reseller(user_id) and (is_vip or user_id == ADMIN_ID):
         markup.row(types.KeyboardButton("➕ Add VIP User"), types.KeyboardButton("🔑 My VIP Users"))
         markup.row(types.KeyboardButton("✏️ Edit VIP"), types.KeyboardButton("🗑 Delete VIP"))
-        
-        if is_admin(user_id):
-            markup.row(types.KeyboardButton("💰 My Balance"), types.KeyboardButton("🌐 View All VIPs"))
-        else:
-            markup.row(types.KeyboardButton("💰 My Balance"))
-            
-    elif is_reseller(user_id):
-        markup.row(types.KeyboardButton("💰 My Balance"))
-        
-    if is_admin(user_id):
         markup.row(types.KeyboardButton("👤 Create Reseller"), types.KeyboardButton("📊 Reseller List"))
         markup.row(types.KeyboardButton("✏️ Edit Reseller"), types.KeyboardButton("🗑 Delete Reseller"))
-        
+        markup.row(types.KeyboardButton("🌐 View All VIPs"), types.KeyboardButton("💰 My Balance"))
+    elif is_reseller(user_id):
+        markup.row(types.KeyboardButton("🌐 VPN Decrypt List"))
+        markup.row(types.KeyboardButton("➕ Add VIP User"), types.KeyboardButton("🔑 My VIP Users"))
+        markup.row(types.KeyboardButton("✏️ Edit VIP"), types.KeyboardButton("🗑 Delete VIP"))
+        markup.row(types.KeyboardButton("💰 My Balance"))
+    else:
+        if is_vip:
+            markup.row(types.KeyboardButton("🌐 VPN Decrypt List"))
+        markup.row(types.KeyboardButton("💰 My Balance"))
     return markup
 
-@bot.message_handler(func=lambda msg: msg.text in MENU_BUTTONS)
-def handle_menu_buttons(message):
+# ==========================================
+# 6. BOT HANDLERS & NAVIGATION
+# ==========================================
+@bot.message_handler(commands=['start', 'help'])
+def send_welcome(message):
     user_id = message.from_user.id
-    user_states[user_id] = None  
-    if user_id in reseller_temp_data: del reseller_temp_data[user_id] 
+    user_states[user_id] = None 
+    pull_data_from_google_sheet()
     
-    is_vip, _ = check_vip_status(user_id)
-    if message.text != "💰 My Balance" and not is_vip and not is_admin(user_id):
-        return bot.reply_to(message, "🚫 <b>သင့်အကောင့်သည် သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်၍ ဤခလုတ်အား အသုံးပြုနိုင်ခြင်းမရှိပါ။</b>\n\nAdmin ထံ ဆက်သွယ်ရန် ခလုတ်ကို နှိပ်ပါ။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
-
-    if message.text == "🌐 VPN Decrypt List":
-        display_decrypt_list(message, user_id, message.chat.id)
-    elif message.text == "➕ Add VIP User":
-        cmd_add_vip(message)
-    elif message.text == "🔑 My VIP Users":
-        cmd_my_vips(message)
-    elif message.text == "💰 My Balance":
-        cmd_my_balance(message)
-    elif message.text == "✏️ Edit VIP":
-        admin_reseller_edit_vip_menu(message)
-    elif message.text == "🗑 Delete VIP":
-        admin_reseller_delete_vip_menu(message)
-    elif message.text == "👤 Create Reseller":
-        admin_create_reseller(message)
-    elif message.text == "📊 Reseller List":
-        admin_view_resellers(message)
-    elif message.text == "✏️ Edit Reseller":
-        admin_edit_reseller_menu(message)
-    elif message.text == "🗑 Delete Reseller":
-        admin_delete_reseller_menu(message)
-    elif message.text == "🌐 View All VIPs":
-        admin_view_all_keys(message)
-
-def display_decrypt_list(message_or_call, user_id, chat_id):
-    pull_data_from_github()
-    is_vip, exp_status = check_vip_status(user_id)
-
     try:
         bot_info = bot.get_me()
         bot_name = bot_info.first_name
     except:
-        bot_name = "Safe Decryptor & VIP Center"
-    
-    if isinstance(message_or_call, types.Message):
-        first_name = message_or_call.from_user.first_name
-    else:
-        first_name = message_or_call.from_user.first_name if hasattr(message_or_call, 'from_user') else "User"
-
-    if not is_vip:
-        no_vip_text = f"🚫 <b>သင်သည် VIP စနစ်အသုံးပြုခွင့် မရှိသေးပါ (သို့မဟုတ်) သက်တမ်းကုန်သွားပါပြီ!</b>\n\n" \
-                      f"👤 အမည်: <b>{first_name}</b>\n" \
-                      f"🆔 Telegram ID: <code>{user_id}</code>\n" \
-                      f"📊 အခြေအနေ: <b>{exp_status}</b>\n\n" \
-                      f"Admin ထံဆက်သွယ်၍ သက်တမ်းတိုးမြှင့်/ဝယ်ယူနိုင်ပါသည်။"
+        bot_name = "AHLFLK Decrypt VIP Bot"
         
-        if isinstance(message_or_call, types.Message):
-            bot.reply_to(message_or_call, no_vip_text, reply_markup=get_admin_contact_markup(), parse_mode="HTML")
-        else:
-            bot.send_message(chat_id, no_vip_text, reply_markup=get_admin_contact_markup(), parse_mode="HTML")
-        return
-
-    account_status = "VIP User VIP ✨"
+    is_vip, exp_status = check_vip_status(user_id)
+    first_name = message.from_user.first_name
+    account_status = "ရိုးရိုးအသုံးပြုသူ"
     tokens_line = ""
     
-    if is_admin(user_id):
+    if is_admin(user_id): 
         account_status = "Main Admin 👑"
     elif is_reseller(user_id):
         account_status = "Reseller Staff 💼"
         tokens = get_reseller_tokens(user_id)
         tokens_line = f"🪙 Credit Balance: <code>{tokens}</code> Tokens\n"
 
-    configs = get_vpn_configs()
-    
-    welcome_text = f"👋 <b>{bot_name} မှ\nနွေးထွေးစွာ ကြိုဆိုပါတယ်!</b>\n\n" \
+    welcome_text = f"👋 <b>{bot_name} မှ ကြိုဆိုပါတယ်ဗျာ!</b>\n\n" \
                    f"📊 <b>အကောင့်အခြေအနေ (Account Info):</b>\n" \
                    f"👑 အဆင့်အတန်း: <b>{account_status}</b>\n" \
                    f"👤 အမည်: <b>{first_name}</b>\n" \
                    f"🆔 Telegram ID: <code>{user_id}</code>\n" \
                    f"{tokens_line}" \
-                   f"⏳ သက်တမ်းကုန်မည့်ရက်: <code>{exp_status}</code>\n\n" \
-                   f"--- <b>Decrypt Configurations List</b> ---\n" \
-                   f"🛠️ Decrypt လုပ်ချင်တဲ့ VPN Config အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ-"
-    
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    buttons = []
-    for index, vpn in enumerate(configs, start=1):
-        btn = types.InlineKeyboardButton(f"[{index}] {vpn['name']}", callback_data=f"dec_{vpn['id']}")
-        buttons.append(btn)
-    
-    for i in range(0, len(buttons), 2):
-        markup.row(*buttons[i:i+2])
-        
-    if isinstance(message_or_call, types.Message):
-        bot.reply_to(message_or_call, welcome_text, reply_markup=get_main_keyboard(user_id), parse_mode="HTML")
-    else:
-        bot.send_message(chat_id, welcome_text, reply_markup=get_main_keyboard(user_id), parse_mode="HTML")
-        
-    if configs: 
-        bot.send_message(chat_id, "👇 Decrypt Configurations List:", reply_markup=markup)
+                   f"⏳ VIP သက်တမ်းကုန်မည့်ရက်: <code>{exp_status}</code>\n\n" \
+                   f"အောက်ပါ Panel Keyboard ကို အသုံးပြုပြီး ထိန်းချုပ်နိုင်ပါသည်။"
+    bot.reply_to(message, welcome_text, reply_markup=get_main_keyboard(user_id), parse_mode="HTML")
 
-@bot.message_handler(commands=['start', 'help'])
-def send_welcome(message):
+@bot.message_handler(func=lambda msg: msg.text in MENU_BUTTONS)
+def handle_menu_buttons(message):
     user_id = message.from_user.id
-    user_states[user_id] = None 
-    display_decrypt_list(message, user_id, message.chat.id)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('dec_'))
-def handle_decrypt_callback(call):
-    chat_id = call.message.chat.id
-    user_id = call.from_user.id
-    is_vip, _ = check_vip_status(user_id)
-    if not is_vip:
-        bot.answer_callback_query(call.id, "🚫 သင်သည် VIP သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သည်။")
-        bot.send_message(chat_id, "🚫 သင်သည် VIP သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သဖြင့် အသုံးပြု၍မရပါ။ Admin ထံ ဆက်သွယ်ပါ။", reply_markup=get_admin_contact_markup())
-        return
-
-    vpn_id = call.data.split('_')[1]
-    configs = get_vpn_configs()
-    selected_vpn = next((item for item in configs if item["id"] == vpn_id), None)
-    if not selected_vpn: return
-
-    status_msg = bot.send_message(chat_id, f"⏳ <b>{selected_vpn['name']} VPN Config ကို Decrypt လုပ်နေပါတယ်...</b>", parse_mode="HTML")
-    try:
-        result_json = perform_decryption(selected_vpn["url"], selected_vpn["outer_key"], selected_vpn["outer_delta"], selected_vpn["method"])
-        temp_file_path = f"{vpn_id}_decrypted.json"
-        with open(temp_file_path, 'w', encoding='utf-8') as f:
-            json.dump(result_json, f, indent=4, ensure_ascii=False)
-            
-        bot.delete_message(chat_id, status_msg.message_id)
-        with open(temp_file_path, 'rb') as doc:
-            bot.send_document(chat_id, doc, caption=f"✅ <b>{selected_vpn['name']} Decrypted Successfully!</b>", parse_mode="HTML")
-        if os.path.exists(temp_file_path): os.remove(temp_file_path)
-    except Exception as e:
-        bot.send_message(chat_id, f"❌ <b>Error:</b> <code>{str(e)}</code>\nပြဿနာတစ်စုံတစ်ရာရှိပါက Admin သို့ မေးမြန်းနိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
-
-# ==========================================
-# 6. RESELLER PANEL: MANAGE VIP CUSTOMERS
-# ==========================================
-def cmd_add_vip(message):
-    user_id = message.from_user.id
-    if not is_reseller(user_id): return
-    pull_data_from_github()
-    
-    current_tokens = get_reseller_tokens(user_id)
-    user_states[user_id] = 'w_vip'
-    
-    msg_text = (
-        f"✍️ <b>VIP အသစ်ဆောက်ရန် ပုံစံစာသားပေးပို့ပါ-</b>\n"
-        f"🪙 နှုန်းထား: <code>1 Day = 1 Token</code> (လက်ကျန်: <code>{current_tokens}</code> Tokens)\n\n"
-        f"✍️ Format အတိုင်း အောက်ပါစာသားကို ကူးယူပြင်ဆင်ပြီး ပို့နိုင်ပါသည်-\n"
-        f"<code>TelegramID | VIP_Name | Unit | Duration</code>\n\n"
-        f"👇 <b>နမူနာ ကို နှိပ်ပြီး Copy ယူနိုင်သည်-</b>\n"
-        f"<code>1234567890 | AHLFLK2025 | 30 | d</code>"
-    )
-    bot.reply_to(message, msg_text, parse_mode="HTML")
-
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_vip')
-def process_vip_add(message):
-    user_id = message.from_user.id
-    parts = [p.strip() for p in message.text.split("|")]
-    if len(parts) != 4 or not parts[0].isdigit() or not parts[2].isdigit() or parts[3].lower() not in ['d', 'm']:
-        return bot.reply_to(message, "❌ ပုံစံမှားနေပါသည်။ TelegramID | VIP_Name | Unit | Duration အတိုင်း သေချာပြန်ပို့ပေးပါ။")
-    
-    target_vip_id = int(parts[0])
-    pull_data_from_github()
-    
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (str(target_vip_id),))
-        existing_vip = cursor.fetchone()
-        
-        cursor.execute("SELECT username FROM users WHERE tg_id = ?", (target_vip_id,))
-        existing_reseller = cursor.fetchone()
-    finally:
-        conn.close()
-    
-    if existing_vip:
-        user_states[user_id] = None
-        return bot.reply_to(message, f"❌ <b>ထည့်သွင်း၍မရပါ!</b>\n\nဒီ ID (<code>{target_vip_id}</code>) သည် VIP စနစ်ထဲတွင် ရှိနှင့်ပြီးသား ဖြစ်နေပါသည်။")
-
-    if existing_reseller:
-        user_states[user_id] = None
-        return bot.reply_to(message, f"❌ <b>ထည့်သွင်း၍မရပါ!</b>\n\nဒီ ID သည် Reseller စာရင်းထဲတွင် ရှိနေသောကြောင့် VIP ထည့်၍မရပါ။")
-
-    required_tokens = calculate_days(parts[2], parts[3])
-    current_tokens = get_reseller_tokens(user_id)
-    
-    if not is_admin(user_id) and current_tokens < required_tokens:
-        return bot.reply_to(message, f"❌ Token မလုံလောက်ပါ။ {required_tokens} Tokens လိုအပ်သည်။ အကူအညီရရန် Admin သို့ ဆက်သွယ်ပါ။", reply_markup=get_admin_contact_markup())
-
-    if deduct_reseller_tokens_by_days(user_id, required_tokens):
-        try:
-            conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-            try:
-                cursor = conn.cursor()
-                cursor.execute("INSERT INTO auth_keys (target_id, key_string, unit_val, duration_type, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)", (str(target_vip_id), parts[1], parts[2], parts[3], user_id, datetime.now().strftime("%Y-%m-%d")))
-                conn.commit()
-            finally:
-                conn.close()
-            
-            new_balance = get_reseller_tokens(user_id)
-            bot.reply_to(message, f"✅ <b>VIP အကောင့် အောင်မြင်စွာ ဆောက်ပြီးပါပြီ။</b>\n👤 နာမည်: <b>{parts[1]}</b>\n💰 လက်ကျန်တိုကင်: <code>{new_balance}</code> Tokens", parse_mode="HTML")
-            sync_db_to_github()
-        except Exception as e: 
-            bot.reply_to(message, f"❌ Database Error: {str(e)}")
-    else:
-        bot.reply_to(message, "❌ တိုကင်နှုတ်ယူခြင်း မအောင်မြင်ပါ (သို့မဟုတ်) သင့်သက်တမ်း ကုန်ဆုံးနေပါသည်။", reply_markup=get_admin_contact_markup())
-        
     user_states[user_id] = None
-
-def cmd_my_vips(message):
-    if not is_reseller(message.from_user.id): return
-    pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys WHERE added_by = ?", (message.from_user.id,))
-        rows = cursor.fetchall()
-    finally:
-        conn.close()
-    if not rows: return bot.reply_to(message, "📭 သင်ထည့်သွင်းထားသော VIP အကောင့်မရှိသေးပါ။")
-    res = "👥 <b>...သင်ထည့်ထားသော VIP အသုံးပြုသူများ...</b>\n\n"
-    for r in rows: res += f"• ID: <code>{r[0]}</code> -> နာမည်: <b>{r[1]}</b> (သက်တမ်း: {r[2]} {r[3]})\n"
-    bot.reply_to(message, res, parse_mode="HTML")
-
-def cmd_my_balance(message):
-    user_id = message.from_user.id
-    pull_data_from_github()
+    text = message.text
     
+    pull_data_from_google_sheet()
     is_vip, exp_status = check_vip_status(user_id)
-    tokens = 0
-    exp_date_str = exp_status
-    is_expired = not is_vip
     
-    if is_reseller(user_id):
+    if text != "💰 My Balance" and not is_vip and not is_admin(user_id) and not is_reseller(user_id):
+        return bot.reply_to(message, "🚫 <b>သင့်အကောင့်သည် သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်၍ ဤခလုတ်အား အသုံးပြုနိုင်ခြင်းမရှိပါ။</b>\n\nAdmin ထံ ဆက်သွယ်ရန် ခလုတ်ကို နှိပ်ပါ။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
+
+    if text == "💰 My Balance":
+        first_name = message.from_user.first_name
+        if is_admin(user_id):
+            res = f"📊 <b>Admin Info:</b>\n👑 Role: Admin\n🆔 ID: <code>{user_id}</code>\n⏳ Expired: <code>Life_Time</code>"
+        elif is_reseller(user_id):
+            tokens = get_reseller_tokens(user_id)
+            res = f"📊 <b>Reseller Balance:</b>\n👤 Name: {first_name}\n🪙 Credits: <code>{tokens}</code> Tokens\n⏳ Expired: <code>{exp_status}</code>"
+        else:
+            res = f"📊 <b>User Status:</b>\n👤 Name: {first_name}\n🆔 ID: <code>{user_id}</code>\n⏳ VIP Expired: <code>{exp_status}</code>"
+        bot.reply_to(message, res, parse_mode="HTML")
+
+    elif text == "🌐 VPN Decrypt List":
+        configs = get_vpn_configs()
+        if not configs: return bot.reply_to(message, "📭 VPN Configurations မရှိသေးပါ။ Admin အား ပြောကြားပေးပါ။")
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        for idx, cfg in enumerate(configs):
+            markup.add(types.InlineKeyboardButton(text=cfg.get("name", f"Config {idx+1}"), callback_data=f"dec_{idx}"))
+        bot.reply_to(message, "🌐 **ကျေးဇူးပြု၍ Decrypt ပြုလုပ်လိုသော VPN Config ကို ရွေးချယ်ပေးပါ-**", reply_markup=markup, parse_mode="Markdown")
+
+    elif text == "➕ Add VIP User":
+        if not is_reseller(user_id): return
+        if get_reseller_tokens(user_id) <= 0 and not is_admin(user_id):
+            return bot.reply_to(message, "❌ သင့်မှာ Token လက်ကျန် မလုံလောက်တော့ပါသဖြင့် VIP မထည့်ပေးနိုင်ပါ။")
+        user_states[user_id] = "ADD_VIP_TG"
+        bot.reply_to(message, "👤 ထည့်သွင်းမည့်သူ၏ **Telegram ID** ကို ပေးပို့ပါ-")
+
+    elif text == "🔑 My VIP Users":
+        if not is_reseller(user_id): return
         conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-        try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT token_balance, expire_date FROM users WHERE tg_id = ?", (user_id,))
-            row = cursor.fetchone()
-            if row:
-                tokens = row[0]
-                exp_date_str = row[1]
-                try:
-                    expire_date = datetime.strptime(exp_date_str, "%Y-%m-%d")
-                    if datetime.now() > expire_date:
-                        is_expired = True
-                except:
-                    is_expired = True
-        except Exception as e:
-            print(f"[-] Balance Check Error: {str(e)}")
-            is_expired = True
-        finally:
-            conn.close()
-
-    needs_contact_admin = is_expired and (user_id != ADMIN_ID)
-
-    response_text = f"💰 <b>သင့်အကောင့်အခြေအနေ (Account Info):</b>\n\n" \
-                    f"👤 အမည်: {message.from_user.first_name}\n" \
-                    f"🆔 Telegram ID: <code>{user_id}</code>\n"
-    
-    if is_reseller(user_id) and user_id != ADMIN_ID:
-        response_text += f"🪙 Credit Balance: <code>{tokens}</code> Tokens\n"
-        response_text += f"⏳ သင့် Reseller သက်တမ်းကုန်မည့်ရက်: <code>{exp_date_str}</code>"
-    else:
-        response_text += f"⏳ သင့် VIP သက်တမ်းကုန်မည့်ရက်: <code>{exp_date_str}</code>"
-    
-    if needs_contact_admin:
-        response_text += "\n\n⚠️ <b>သင့်အကောင့်သည် သက်တမ်းကုန်ဆုံးနေခြင်း (သို့မဟုတ်) အသုံးပြုခွင့်မရှိခြင်း ဖြစ်ပေါ်နေပါသည်။</b>"
-        admin_markup = types.InlineKeyboardMarkup()
-        admin_markup.add(types.InlineKeyboardButton(text="💬 Contact Admin", url="https://t.me/ahlflk2025"))
-        bot.reply_to(message, response_text, reply_markup=admin_markup, parse_mode="HTML")
-    else:
-        bot.reply_to(message, response_text, reply_markup=get_main_keyboard(user_id), parse_mode="HTML")
-
-def admin_reseller_edit_vip_menu(message):
-    user_id = message.from_user.id
-    if not is_reseller(user_id): return
-    pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    try:
         cursor = conn.cursor()
-        if is_admin(user_id):
-            cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys")
-        else:
-            cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys WHERE added_by = ?", (user_id,))
+        cursor.execute("SELECT target_id, key_string, vpn_key, unit_val, created_at FROM auth_keys WHERE added_by = ?", (str(user_id),))
         rows = cursor.fetchall()
-    finally:
         conn.close()
-    
-    if not rows: return bot.reply_to(message, "📭 ပြင်ဆင်ရန် VIP အသုံးပြုသူ လုံးဝမရှိသေးပါ။")
-    
-    res_list = "📝 <b>...လက်ရှိ VIP အသုံးပြုသူ စာရင်းများ...</b>\n\n"
-    for r in rows: res_list += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b> ({r[2]}{r[3]})\n"
-    res_list += "\n✍️ <b>သက်တမ်းပြင်ဆင်/တိုးမြှင့်လိုသော VIP ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-</b>"
-    
-    user_states[user_id] = 'w_edit_vip_id'
-    bot.send_message(message.chat.id, res_list, parse_mode="HTML")
+        if not rows: return bot.reply_to(message, "📭 သင်ကိုယ်တိုင် ထည့်သွင်းထားသော VIP အသုံးပြုသူ မရှိသေးပါ။")
+        res = f"🔑 <b>သင့်ရဲ့ VIP အသုံးပြုသူ စာရင်း ({len(rows)} ဦး):</b>\n\n"
+        for r in rows:
+            exp_str = get_expired_date_string(r[4], r[3])
+            res += f"🆔 TG ID: <code>{r[0]}</code> | 👤 အမည်: <code>{r[1]}</code>\n🔑 APK ID: <code>{r[2]}</code> | 📅 Expired: <code>{exp_str}</code>\n\n"
+        bot.reply_to(message, res, parse_mode="HTML")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_vip_id')
-def process_edit_vip_id(message):
-    user_id = message.from_user.id
-    target_id_str = message.text.strip()
-    if not target_id_str.isdigit(): return bot.reply_to(message, "❌ Telegram ID အမှန်ကို ရိုက်ပို့ပေးပါ။")
-        
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    try:
-        cursor = conn.cursor()
-        if is_admin(user_id):
-            cursor.execute("SELECT key_string, unit_val, duration_type FROM auth_keys WHERE target_id = ?", (str(target_id_str),))
-        else:
-            cursor.execute("SELECT key_string, unit_val, duration_type FROM auth_keys WHERE target_id = ? AND added_by = ?", (str(target_id_str), user_id))
-        row = cursor.fetchone()
-    finally:
-        conn.close()
-    
-    if not row: return bot.reply_to(message, "❌ ဤ ID ဖြင့် VIP အား ရှာမတွေ့ပါ သို့မဟုတ် ပြင်ဆင်ခွင့်မရှိပါ။")
-        
-    reseller_temp_data[user_id] = {'target_id': str(target_id_str), 'name': row[0]}
-    user_states[user_id] = 'w_edit_vip_duration'
-    
-    edit_msg = f"👤 အကောင့်: <b>{row[0]}</b>\n\n✍️ ပြောင်းလဲသတ်မှတ်လိုသော <b>သက်တမ်းအသစ်</b> ကို <code>Unit | Duration</code> ပုံစံဖြင့် ပို့ပေးပါ-\nဥပမာ- <code>30 | d</code>"
-    bot.reply_to(message, edit_msg, parse_mode="HTML")
+    elif text == "✏️ Edit VIP":
+        if not is_reseller(user_id): return
+        user_states[user_id] = "EDIT_VIP_KEY"
+        bot.reply_to(message, "✏️ ပြင်ဆင်လိုသော VIP အကောင့်၏ **APK Key (သို့မဟုတ်) TG ID** ကို ပေးပို့ပါ-")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_vip_duration')
-def process_edit_vip_duration(message):
-    user_id = message.from_user.id
-    temp = reseller_temp_data.get(user_id)
-    if not temp: return
-        
-    parts = [p.strip() for p in message.text.split("|")]
-    if len(parts) != 2 or not parts[0].isdigit() or parts[1].lower() not in ['d', 'm']:
-        return bot.reply_to(message, "❌ Format မှားယွင်းနေပါသည်။ ဥပမာ- <code>30 | d</code> ဟု ပို့ပေးပါ။")
-        
-    new_days = calculate_days(parts[0], parts[1])
-    current_tokens = get_reseller_tokens(user_id)
-    
-    if not is_admin(user_id) and current_tokens < new_days:
-        return bot.reply_to(message, f"❌ သက်တမ်းတိုးရန် Token မလုံလောက်ပါ။ Admin ထံ ဆက်သွယ်ပါ။", reply_markup=get_admin_contact_markup())
-        
-    pull_data_from_github()
-    
-    if deduct_reseller_tokens_by_days(user_id, new_days):
+    elif text == "🗑 Delete VIP":
+        if not is_reseller(user_id): return
+        user_states[user_id] = "DEL_VIP_KEY"
+        bot.reply_to(message, "🗑 ဖျက်ထုတ်လိုသော VIP အကောင့်၏ **APK Key (သို့မဟုတ်) TG ID** ကို ပေးပို့ပါ-")
+
+    elif text == "👤 Create Reseller":
+        if not is_admin(user_id): return
+        user_states[user_id] = "CREATE_R_ID"
+        bot.reply_to(message, "👤 ဖန်တီးမည့် Reseller Staff ၏ **Telegram ID** ကို ရိုက်ထည့်ပေးပါ-")
+
+    elif text == "📊 Reseller List":
+        if not is_admin(user_id): return
         conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-        try:
-            cursor = conn.cursor()
-            cursor.execute("UPDATE auth_keys SET unit_val = ?, duration_type = ?, created_at = ? WHERE target_id = ?", (int(parts[0]), parts[1].lower(), datetime.now().strftime("%Y-%m-%d"), str(temp['target_id'])))
-            conn.commit()
-        finally:
-            conn.close()
-        
-        sync_db_to_github()
-        new_balance = get_reseller_tokens(user_id)
-        bot.reply_to(message, f"✅ VIP User: <b>{temp['name']}</b> ကို သက်တမ်းအသစ် လဲလှယ်ပြီးပါပြီ။\n💰 လက်ကျန်တိုကင်: <code>{new_balance}</code> Tokens", parse_mode="HTML")
-    else:
-        bot.reply_to(message, "❌ Token နှုတ်ယူခြင်း မအောင်မြင်ပါ။ သက်တမ်းကုန်နေခြင်း ဖြစ်နိုင်ပါသည်။", reply_markup=get_admin_contact_markup())
-    
-    user_states[user_id] = None
-    if user_id in reseller_temp_data: del reseller_temp_data[user_id]
-
-def admin_reseller_delete_vip_menu(message):
-    user_id = message.from_user.id
-    if not is_reseller(user_id): return
-    pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    try:
         cursor = conn.cursor()
-        if is_admin(user_id):
-            cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys")
-        else:
-            cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys WHERE added_by = ?", (user_id,))
+        cursor.execute("SELECT reseller_id, username, credits FROM resellers")
         rows = cursor.fetchall()
-    finally:
         conn.close()
-    if not rows: return bot.reply_to(message, "📭 ဖျက်ရန် VIP မရှိပါ။")
-    
-    res_list = "🗑 <b>လက်ရှိ VIP အသုံးပြုသူ စာရင်းများ</b>\n\n"
-    for r in rows: res_list += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b> ({r[2]}{r[3]})\n"
-    res_list += "\n✍️ <b>ဖျက်ထုတ်လိုသော VIP ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-</b>"
-    user_states[user_id] = 'w_del_vip'
-    bot.send_message(message.chat.id, res_list, parse_mode="HTML")
+        if not rows: return bot.reply_to(message, "📭 Reseller Staff မရှိသေးပါ။")
+        res = "💼 <b>Reseller Staff အားလုံးစာရင်း:</b>\n\n"
+        for r in rows: res += f"🆔 <code>{r[0]}</code> | 👤 <code>{r[1]}</code> | 🪙 <code>{r[2]}</code> Tokens\n"
+        bot.reply_to(message, res, parse_mode="HTML")
 
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_del_vip')
-def process_delete_vip_by_id(message):
-    user_id = message.from_user.id
-    id_to_del = message.text.strip()
-    if not id_to_del.isdigit(): return bot.reply_to(message, "❌ ID မှားယွင်းနေပါသည်။")
-    pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    try:
+    elif text == "✏️ Edit Reseller":
+        if not is_admin(user_id): return
+        user_states[user_id] = "EDIT_R_ID"
+        bot.reply_to(message, "✏️ Token ပြင်ဆင်လိုသော Reseller Staff ၏ **Telegram ID** ကို ပေးပို့ပါ-")
+
+    elif text == "🗑 Delete Reseller":
+        if not is_admin(user_id): return
+        user_states[user_id] = "DEL_R_ID"
+        bot.reply_to(message, "🗑 ဖြုတ်ချလိုသော Reseller Staff ၏ **Telegram ID** ကို ပေးပို့ပါ-")
+
+    elif text == "🌐 View All VIPs":
+        if not is_admin(user_id): return
+        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
         cursor = conn.cursor()
-        if is_admin(user_id):
-            cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (str(id_to_del),))
-        else:
-            cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ? AND added_by = ?", (str(id_to_del), user_id))
-        row = cursor.fetchone()
-        if not row:
-            return bot.reply_to(message, "❌ ရှာမတွေ့ပါ သို့မဟုတ် ဖျက်ခွင့်မရှိပါ။")
-        cursor.execute("DELETE FROM auth_keys WHERE target_id = ?", (str(id_to_del),))
-        conn.commit()
-    finally:
+        cursor.execute("SELECT target_id, key_string, vpn_key, unit_val, created_at FROM auth_keys")
+        rows = cursor.fetchall()
         conn.close()
-    
-    sync_db_to_github()
-    bot.reply_to(message, f"✅ VIP User: <b>{row[0]}</b> ကို ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode="HTML")
-    user_states[user_id] = None
+        if not rows: return bot.reply_to(message, "📭 VIP အကောင့် လုံးဝမရှိသေးပါ။")
+        res = f"🌐 <b>VIP အသုံးပြုသူ အားလုံးစာရင်း ({len(rows)} ဦး):</b>\n\n"
+        for r in rows:
+            exp_str = get_expired_date_string(r[4], r[3])
+            res += f"🆔 <code>{r[0]}</code> | 🔑 <code>{r[2]}</code> | 📅 <code>{exp_str}</code>\n"
+        bot.reply_to(message, res, parse_mode="HTML")
 
 # ==========================================
-# 7. MAIN ADMIN PANEL: MANAGE RESELLERS
+# 7. INLINE CALLBACK FOR DECRYPTION
 # ==========================================
-def admin_create_reseller(message):
-    if not is_admin(message.from_user.id): return
-    user_states[message.from_user.id] = 'w_one_line_reseller'
+@bot.callback_query_handler(func=lambda call: call.data.startswith("dec_"))
+def callback_decrypt(call):
+    user_id = call.from_user.id
+    bot.answer_callback_query(call.id, "Processing Decryption...")
+    idx = int(call.data.split("_")[1])
+    configs = get_vpn_configs()
+    if idx >= len(configs): return bot.send_message(call.message.chat.id, "❌ Invalid Selection.")
     
-    r_msg = (
-        f"👤 <b>Reseller အသစ်ဖန်တီးရန် စာသားပေးပို့ပါ-</b>\n\n"
-        f"✍️ Format လမ်းညွှန်-\n"
-        f"<code>TelegramID | Reseller_Name | Tokens | ExpireDate(YYYY-MM-DD)</code>\n\n"
-        f"👇 <b>နမူနာ ကို နှိပ်ပြီး Copy ယူနိုင်သည်-</b>\n"
-        f"<code>1234567890 | MgMg_Reseller | 100 | 2026-07-02</code>"
-    )
-    bot.reply_to(message, r_msg, parse_mode="HTML")
-
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_one_line_reseller')
-def process_one_line_reseller(message):
-    admin_id = message.from_user.id
-    parts = [p.strip() for p in message.text.split("|")]
-    
-    if len(parts) != 4 or not parts[0].isdigit() or not parts[2].isdigit():
-        return bot.reply_to(message, "❌ ပုံစံမှားယွင်းနေပါသည်။ TelegramID | Reseller_Name | Tokens | YYYY-MM-DD အတိုင်း ပို့ပေးပါ။")
-        
-    r_id = int(parts[0])
-    r_name = parts[1]
-    r_tokens = int(parts[2])
-    r_date = parts[3]
-    
-    if not re.match(r'^\d{4}-\d{2}-\d{2}$', r_date):
-        return bot.reply_to(message, "❌ ရက်စွဲပုံစံ မှားနေပါသည်။ YYYY-MM-DD (ဥပမာ- 2026-07-02) အတိုင်း ရေးပေးပါ။")
-    
-    pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    cfg = configs[idx]
     try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT username FROM users WHERE tg_id = ?", (r_id,))
-        existing_reseller = cursor.fetchone()
-        
-        cursor.execute("SELECT key_string FROM auth_keys WHERE target_id = ?", (str(r_id),))
-        existing_vip = cursor.fetchone()
-    finally:
-        conn.close()
-    
-    if existing_reseller:
-        user_states[admin_id] = None
-        return bot.reply_to(message, f"❌ ဤ ID သည် Reseller အဖြစ် ရှိနှင့်ပြီးသား ဖြစ်နေပါသည်။")
-
-    if existing_vip:
-        user_states[admin_id] = None
-        return bot.reply_to(message, f"❌ ဤ ID သည် VIP စာရင်းထဲတွင် ရှိနေသောကြောင့် Reseller ခန့်၍မရပါ။")
-
-    try:
-        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-        try:
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO users (tg_id, username, role, token_balance, expire_date) VALUES (?, ?, 'reseller', ?, ?)", (r_id, r_name, r_tokens, r_date))
-            conn.commit()
-        finally:
-            conn.close()
-        
-        success_msg = (
-            f"✅ <b>Reseller အကောင့်ကို အောင်မြင်စွာ ဖန်တီးပြီးပါပြီ!</b>\n\n"
-            f"🆔 ID: {r_id}\n"
-            f"👤 နာမည်: <b>{r_name}</b>\n"
-            f"🪙 Tokens: {r_tokens} Tokens\n"
-            f"⏳ သက်တမ်းကုန်မည့်ရက်: {r_date}"
-        )
-        bot.reply_to(message, success_msg, parse_mode="HTML")
-        sync_resellers_to_github()
+        dec_obj = perform_decryption(cfg["url"], cfg["key"], cfg["delta"], cfg["method"])
+        pretty_json = json.dumps(dec_obj, indent=2, ensure_ascii=False)
+        filename = f"Decrypted_{cfg.get('name','Config')}.json"
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(pretty_json)
+        with open(filename, "rb") as f:
+            bot.send_document(call.message.chat.id, f, caption=f"✅ **{cfg.get('name','Config')}** အား အောင်မြင်စွာ Decrypt လုပ်ပြီးပါပြီ။\nPowered By @AHLFLK2025")
+        os.remove(filename)
     except Exception as e:
-        bot.reply_to(message, f"❌ Error: {str(e)}")
-        
-    user_states[admin_id] = None
-
-def admin_view_resellers(message):
-    if not is_admin(message.from_user.id): return
-    pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT tg_id, username, token_balance, expire_date FROM users WHERE role='reseller' AND tg_id != ?", (ADMIN_ID,))
-        rows = cursor.fetchall()
-    finally:
-        conn.close()
-    if not rows: return bot.reply_to(message, "📭 Reseller စာရင်း လုံးဝမရှိသေးပါ။")
-    res = "👥 <b>Reseller စာရင်းများနှင့် သက်တမ်းများ:</b>\n\n"
-    for r in rows: res += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b>\n🪙 {r[2]} Tokens | ⏳ Exp: <code>{r[3]}</code>\n\n"
-    bot.reply_to(message, res, parse_mode="HTML")
-
-def admin_edit_reseller_menu(message):
-    if not is_admin(message.from_user.id): return
-    pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT tg_id, username, token_balance, expire_date FROM users WHERE role = 'reseller' AND tg_id != ?", (ADMIN_ID,))
-        rows = cursor.fetchall()
-    finally:
-        conn.close()
-    
-    if not rows: return bot.reply_to(message, "📭 ပြင်ဆင်ရန် Reseller လုံးဝမရှိသေးပါ။")
-    
-    res_list = "📝 <b>...လက်ရှိ Reseller စာရင်းများ...</b>\n\n"
-    for r in rows: res_list += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b> (🪙 {r[2]} | ⏳ {r[3]})\n"
-    res_list += "\n✍️ <b>ပြင်ဆင်လိုသော Reseller ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-</b>"
-    
-    user_states[message.from_user.id] = 'w_edit_reseller_id'
-    bot.send_message(message.chat.id, res_list, parse_mode="HTML")
-
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_reseller_id')
-def process_edit_reseller_id(message):
-    admin_id = message.from_user.id
-    target_id_str = message.text.strip()
-    if not target_id_str.isdigit(): return bot.reply_to(message, "❌ Telegram ID အမှန်ကို ရိုက်ပို့ပေးပါ။")
-        
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT username, token_balance, expire_date FROM users WHERE tg_id = ? AND role = 'reseller'", (int(target_id_str),))
-        row = cursor.fetchone()
-    finally:
-        conn.close()
-    
-    if not row: return bot.reply_to(message, "❌ ဤ ID ဖြင့် Reseller အား ရှာမတွေ့ပါ။")
-        
-    reseller_temp_data[admin_id] = {'target_reseller_id': int(target_id_str), 'old_name': row[0]}
-    user_states[admin_id] = 'w_edit_reseller_data'
-    
-    edit_msg = (
-        f"👤 ပြင်ဆင်မည့်သူ: <b>{row[0]}</b>\n\n"
-        f"✍️ <b>အချက်အလက်အသစ်များကို အောက်ပါ Format အတိုင်း ပြင်ဆင်ပို့ပေးပါ-</b>\n"
-        f"<code>Reseller_Name | New_Tokens | ExpireDate(YYYY-MM-DD)</code>\n\n"
-        f"👇 <b>နမူနာ ကို နှိပ်ပြီး Copy ယူနိုင်သည်-</b>\n"
-        f"<code>{row[0]} | {row[1]} | {row[2]}</code>"
-    )
-    bot.reply_to(message, edit_msg, parse_mode="HTML")
-
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_edit_reseller_data')
-def process_edit_reseller_data(message):
-    admin_id = message.from_user.id
-    temp = reseller_temp_data.get(admin_id)
-    if not temp: return
-        
-    parts = [p.strip() for p in message.text.split("|")]
-    if len(parts) != 3 or not parts[1].isdigit():
-        return bot.reply_to(message, "❌ Format မှားယွင်းနေပါသည်။ Name | Tokens | YYYY-MM-DD ဟု ပို့ပေးပါ။")
-        
-    new_name = parts[0]
-    new_tokens = int(parts[1])
-    new_date = parts[2]
-    
-    if not re.match(r'^\d{4}-\d{2}-\d{2}$', new_date):
-        return bot.reply_to(message, "❌ ရက်စွဲပုံစံ မှားနေပါသည်။ YYYY-MM-DD (ဥပမာ- 2026-07-02) အတိုင်း ရေးပေးပါ။")
-        
-    pull_data_from_github()
-    
-    try:
-        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-        try:
-            cursor = conn.cursor()
-            cursor.execute("UPDATE users SET username = ?, token_balance = ?, expire_date = ? WHERE tg_id = ?", (new_name, new_tokens, new_date, temp['target_reseller_id']))
-            conn.commit()
-        finally:
-            conn.close()
-        
-        sync_resellers_to_github()
-        bot.reply_to(message, f"✅ Reseller: <b>{temp['old_name']}</b> ၏ အချက်အလက်များအား အောင်မြင်စွာ အပ်ဒိတ်လုပ်ပြီးပါပြီ။", parse_mode="HTML")
-    except Exception as e:
-        bot.reply_to(message, f"❌ Error: {str(e)}")
-    
-    user_states[admin_id] = None
-    if admin_id in reseller_temp_data: del reseller_temp_data[admin_id]
-
-def admin_delete_reseller_menu(message):
-    if not is_admin(message.from_user.id): return
-    pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT tg_id, username, token_balance, expire_date FROM users WHERE role = 'reseller' AND tg_id != ?", (ADMIN_ID,))
-        rows = cursor.fetchall()
-    finally:
-        conn.close()
-    if not rows: return bot.reply_to(message, "📭 ဖျက်ရန် Reseller မရှိပါ။")
-    
-    res_list = "👥 <b>လက်ရှိ Reseller စာရင်းများ:</b>\n\n"
-    for r in rows: 
-        res_list += f"🆔 <code>{r[0]}</code> | 👤 <b>{r[1]}</b> (🪙 {r[2]} | ⏳ {r[3]})\n"
-        
-    res_list += "\n✍️ <b>ဖျက်ထုတ်လိုသော Reseller ၏ Telegram ID ကို ရိုက်ပို့ပေးပါ-</b>"
-    user_states[message.from_user.id] = 'w_del_reseller'
-    bot.send_message(message.chat.id, res_list, parse_mode="HTML")
-
-@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) == 'w_del_reseller')
-def process_delete_reseller_by_id(message):
-    user_id = message.from_user.id
-    id_to_del = message.text.strip()
-    if not id_to_del.isdigit(): return bot.reply_to(message, "❌ ID မှားယွင်းနေပါသည်။")
-    pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT username FROM users WHERE tg_id = ? AND role = 'reseller'", (int(id_to_del),))
-        row = cursor.fetchone()
-        if not row:
-            return bot.reply_to(message, "❌ ရှာမတွေ့ပါ။")
-        cursor.execute("DELETE FROM users WHERE tg_id = ?", (int(id_to_del),))
-        conn.commit()
-    finally:
-        conn.close()
-    
-    sync_resellers_to_github()
-    bot.reply_to(message, f"✅ Reseller: <b>{row[0]}</b> ကို ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode="HTML")
-    user_states[user_id] = None
-
-def admin_view_all_keys(message):
-    if not is_admin(message.from_user.id): return
-    pull_data_from_github()
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT target_id, key_string, unit_val, duration_type FROM auth_keys")
-        rows = cursor.fetchall()
-    finally:
-        conn.close()
-    if not rows: return bot.reply_to(message, "📭 VIP အကောင့် မရှိသေးပါ။")
-    res = f"🌐 <b>VIP အသုံးပြုသူ အားလုံးစာရင်း ({len(rows)} ဦး):</b>\n\n"
-    for r in rows: res += f"🆔 <code>{r[0]}</code> | 👤 <code>{r[1]}</code> | {r[2]} {r[3]}\n"
-    bot.reply_to(message, res, parse_mode="HTML")
+        bot.send_message(call.message.chat.id, f"❌ Decryption Failed: {str(e)}")
 
 # ==========================================
-# 8. BOT POLLING & WEBHOOK EXECUTION
+# 8. STEP-BY-STEP CONVERSATION FLOW (STATE SYSTEM)
+# ==========================================
+@bot.message_handler(func=lambda msg: True)
+def handle_state_inputs(message):
+    user_id = message.from_user.id
+    state = user_states.get(user_id)
+    if not state: return
+
+    # --- ADD VIP USER PROCESS ---
+    if state == "ADD_VIP_TG":
+        vip_temp_data[user_id] = {"tg_id": message.text.strip()}
+        user_states[user_id] = "ADD_VIP_NAME"
+        bot.reply_to(message, "👤 အသုံးပြုသူအမည် (Name) ကို ရိုက်ထည့်ပါ-")
+    
+    elif state == "ADD_VIP_NAME":
+        vip_temp_data[user_id]["name"] = message.text.strip()
+        user_states[user_id] = "ADD_VIP_KEY"
+        bot.reply_to(message, "🔑 APK Key (Unique VPN Key) ကို ရိုက်ထည့်ပါ-")
+
+    elif state == "ADD_VIP_KEY":
+        v_key = message.text.strip()
+        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute("SELECT vpn_key FROM auth_keys WHERE vpn_key = ?", (v_key,))
+        dup = cursor.fetchone()
+        conn.close()
+        if dup: return bot.reply_to(message, "❌ ဤ APK Key သည် စနစ်ထဲတွင် ရှိနှင့်ပြီးသားဖြစ်ပါသည်။ အခြားတစ်ခုထည့်ပါ။")
+        
+        vip_temp_data[user_id]["vpn_key"] = v_key
+        user_states[user_id] = "ADD_VIP_MONTH"
+        bot.reply_to(message, "⏳ သက်တမ်းမည်မျှထားရှိမည်နည်း? (ဥပမာ- 1 ဆိုလျှင် 1 လ၊ 12 ဆိုလျှင် 1 နှစ်)-")
+
+    elif state == "ADD_VIP_MONTH":
+        if not message.text.isdigit(): return bot.reply_to(message, "🔢 ဂဏန်းသီးသန့်သာ ထည့်သွင်းပေးပါ-")
+        months = int(message.text)
+        
+        # Credit/Token Check
+        if not is_admin(user_id):
+            current_tokens = get_reseller_tokens(user_id)
+            if current_tokens < months:
+                return bot.reply_to(message, f"❌ သင့်မှာ Token {current_tokens} သာရှိသဖြင့် {months} လစာ မထည့်ပေးနိုင်ပါ။")
+
+        vdata = vip_temp_data[user_id]
+        now_str = datetime.now().strftime("%Y-%m-%d")
+        
+        # Push to Google Sheet
+        success = push_to_google_sheet("sync", vdata["tg_id"], vdata["name"], vdata["vpn_key"], now_str, months)
+        if success:
+            # Reseller Token Deduct internally by syncing via sheet
+            if not is_admin(user_id):
+                push_to_google_sheet("sync_reseller", str(user_id), message.from_user.first_name + "_Reseller", "RESELLER_ACCOUNT", now_str, -months, is_reseller_mode=True)
+            
+            pull_data_from_google_sheet()
+            bot.reply_to(message, f"✅ VIP အကောင့် ထည့်သွင်းမှု အောင်မြင်ပြီး Google Sheet သို့ စင့်ခ်လုပ်ပြီးပါပြီ။", reply_markup=get_main_keyboard(user_id))
+        else:
+            bot.reply_to(message, "❌ Google Sheet သို့ ပို့ဆောင်မှု မအောင်မြင်ပါ။ SCRIPT_URL အား စစ်ဆေးပါ။")
+        user_states[user_id] = None
+
+    # --- EDIT VIP PROCESS ---
+    elif state == "EDIT_VIP_KEY":
+        search_val = message.text.strip()
+        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute("SELECT target_id, key_string, vpn_key, added_by FROM auth_keys WHERE vpn_key = ? OR target_id = ?", (search_val, search_val))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row: return bot.reply_to(message, "❌ ရှာမတွေ့ပါ။ မှန်ကန်စွာ ပြန်ရိုက်ပါ။")
+        if not is_admin(user_id) and row[3] != str(user_id):
+            return bot.reply_to(message, "🚫 ဤအကောင့်သည် သင်ဖန်တီးထားခြင်းမဟုတ်သဖြင့် ပြင်ဆင်ခွင့်မရှိပါ။")
+            
+        vip_temp_data[user_id] = {"tg_id": row[0], "name": row[1], "vpn_key": row[2]}
+        user_states[user_id] = "EDIT_VIP_MONTH"
+        bot.reply_to(message, f"✏️ အကောင့်တွေ့ရှိပါပြီ: <b>{row[1]}</b>\nထပ်မံတိုးမြှင့်လိုသော လ အား ရိုက်ထည့်ပါ (ထပ်ပေါင်းမည့်လ)-", parse_mode="HTML")
+
+    elif state == "EDIT_VIP_MONTH":
+        if not message.text.isdigit(): return bot.reply_to(message, "🔢 ဂဏန်းသာ ထည့်ပါ-")
+        months = int(message.text)
+        
+        if not is_admin(user_id) and get_reseller_tokens(user_id) < months:
+            return bot.reply_to(message, "❌ Token မလုံလောက်ပါ။")
+            
+        vdata = vip_temp_data[user_id]
+        now_str = datetime.now().strftime("%Y-%m-%d")
+        
+        success = push_to_google_sheet("sync", vdata["tg_id"], vdata["name"], vdata["vpn_key"], now_str, months)
+        if success:
+            if not is_admin(user_id):
+                push_to_google_sheet("sync_reseller", str(user_id), message.from_user.first_name + "_Reseller", "RESELLER_ACCOUNT", now_str, -months, is_reseller_mode=True)
+            pull_data_from_google_sheet()
+            bot.reply_to(message, "✅ VIP သက်တမ်း တိုးမြှင့်ခြင်း အောင်မြင်ပါသည်။", reply_markup=get_main_keyboard(user_id))
+        else:
+            bot.reply_to(message, "❌ Google Sheet သို့ စင့်ခ်လုပ်ရန် ပျက်ကွက်သည်။")
+        user_states[user_id] = None
+
+    # --- DELETE VIP PROCESS ---
+    elif state == "DEL_VIP_KEY":
+        search_val = message.text.strip()
+        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute("SELECT target_id, key_string, vpn_key, added_by FROM auth_keys WHERE vpn_key = ? OR target_id = ?", (search_val, search_val))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row: return bot.reply_to(message, "❌ ရှာမတွေ့ပါ။")
+        if not is_admin(user_id) and row[3] != str(user_id):
+            return bot.reply_to(message, "🚫 ဖျက်ခွင့်မရှိပါ။")
+            
+        success = push_to_google_sheet("delete", row[0], row[1], row[2], "", 0)
+        if success:
+            pull_data_from_google_sheet()
+            bot.reply_to(message, f"🗑 VIP အကောင့်: {row[1]} အား Google Sheet မှ ဖျက်ထုတ်ပြီးပါပြီ။", reply_markup=get_main_keyboard(user_id))
+        else:
+            bot.reply_to(message, "❌ ဖျက်ရန် Google Sheet ပျက်ကွက်သည်။")
+        user_states[user_id] = None
+
+    # --- CREATE RESELLER PROCESS (ADMIN ONLY) ---
+    elif state == "CREATE_R_ID":
+        reseller_temp_data[user_id] = {"r_id": message.text.strip()}
+        user_states[user_id] = "CREATE_R_NAME"
+        bot.reply_to(message, "👤 Reseller ရဲ့ အမည် (Name) ကို ထည့်ပါ-")
+
+    elif state == "CREATE_R_NAME":
+        reseller_temp_data[user_id]["name"] = message.text.strip() + "_Reseller"
+        user_states[user_id] = "CREATE_R_TOKEN"
+        bot.reply_to(message, "🪙 သတ်မှတ်ပေးမည့် Token အရေအတွက်ကို ရိုက်ထည့်ပါ-")
+
+    elif state == "CREATE_R_TOKEN":
+        if not message.text.isdigit(): return bot.reply_to(message, "🔢 ဂဏန်းသာ ထည့်ပါ-")
+        tokens = int(message.text)
+        rdata = reseller_temp_data[user_id]
+        
+        success = push_to_google_sheet("sync_reseller", rdata["r_id"], rdata["name"], "RESELLER_ACCOUNT", datetime.now().strftime("%Y-%m-%d"), tokens, is_reseller_mode=True)
+        if success:
+            pull_data_from_google_sheet()
+            bot.reply_to(message, "✅ Reseller Staff ဖန်တီးမှု အောင်မြင်ပြီး Sheet သို့ သိမ်းဆည်းပြီးပါပြီ။", reply_markup=get_main_keyboard(user_id))
+        else:
+            bot.reply_to(message, "❌ Google Sheet သို့ ပို့ဆောင်ရန် ပျက်ကွက်သည်။")
+        user_states[user_id] = None
+
+    # --- EDIT RESELLER PROCESS ---
+    elif state == "EDIT_R_ID":
+        r_id = message.text.strip()
+        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute("SELECT reseller_id, username FROM resellers WHERE reseller_id = ?", (r_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if not row: return bot.reply_to(message, "❌ ဤ Reseller ID အား ရှာမတွေ့ပါ။")
+        
+        reseller_temp_data[user_id] = {"r_id": row[0], "name": row[1] + "_Reseller"}
+        user_states[user_id] = "EDIT_R_TOKEN"
+        bot.reply_to(message, f"💼 Reseller: {row[1]}\nပေါင်းထည့်လိုသော Token အရေအတွက် ရိုက်ထည့်ပါ (နှုတ်လိုပါက အနှုတ်လက္ခဏာ - ခံထည့်ပါ)-")
+
+    elif state == "EDIT_R_TOKEN":
+        try:
+            tokens = int(message.text.strip())
+        except:
+            return bot.reply_to(message, "🔢 ဂဏန်းပုံစံသာ ရိုက်ထည့်ပေးပါ-")
+            
+        rdata = reseller_temp_data[user_id]
+        success = push_to_google_sheet("sync_reseller", rdata["r_id"], rdata["name"], "RESELLER_ACCOUNT", "", tokens, is_reseller_mode=True)
+        if success:
+            pull_data_from_google_sheet()
+            bot.reply_to(message, "✅ Reseller Token ပြင်ဆင်မှု အောင်မြင်ပါသည်။", reply_markup=get_main_keyboard(user_id))
+        else:
+            bot.reply_to(message, "❌ Sheet သို့ ပို့ဆောင်မှု ပျက်ကွက်သည်။")
+        user_states[user_id] = None
+
+    # --- DELETE RESELLER PROCESS ---
+    elif state == "DEL_R_ID":
+        r_id = message.text.strip()
+        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute("SELECT reseller_id, username FROM resellers WHERE reseller_id = ?", (r_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if not row: return bot.reply_to(message, "❌ ရှာမတွေ့ပါ။")
+        
+        success = push_to_google_sheet("delete", r_id, "", "RESELLER_ACCOUNT", "", 0)
+        if success:
+            pull_data_from_google_sheet()
+            bot.reply_to(message, f"🗑 Reseller: {row[1]} အား အောင်မြင်စွာ ဖျက်ထုတ်ပြီးပါပြီ။", reply_markup=get_main_keyboard(user_id))
+        else:
+            bot.reply_to(message, "❌ Google Sheet ပျက်ကွက်သည်။")
+        user_states[user_id] = None
+
+# ==========================================
+# 9. BOT RUNNING ENGINE
 # ==========================================
 if __name__ == "__main__":
     init_db()
-    pull_data_from_github()
+    pull_data_from_google_sheet()
+    
+    # Run Webhook Server inside a thread
+    srv_thread = Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080))))
+    srv_thread.daemon = True
+    srv_thread.start()
+    
+    # Remove webhook and reset
+    bot.remove_webhook()
     if PUBLIC_URL:
-        try:
-            bot.remove_webhook()
-            bot.set_webhook(url=f"{PUBLIC_URL}/{BOT_TOKEN}")
-        except Exception as e: print(f"[-] Webhook Error: {str(e)}")
-        port = int(os.environ.get('PORT', 8080))
-        app.run(host='0.0.0.0', port=port)
+        import time
+        time.sleep(1)
+        bot.set_webhook(url=f"{PUBLIC_URL}/{BOT_TOKEN}")
+        print(f"[+] Webhook successfully set to: {PUBLIC_URL}")
     else:
-        bot.remove_webhook()
-        bot.infinity_polling()
+        print("[!] PUBLIC_URL is missing, polling or manual setting required.")
+    
+    # Keep main alive
+    while True:
+        try:
+            import time
+            time.sleep(10)
+        except KeyboardInterrupt:
+            break
