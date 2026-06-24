@@ -33,11 +33,11 @@ vip_temp_data = {}
 
 ADMIN_BUTTONS = [
     ["🌐 VPN Decrypt List"],
-    ["➕ Add VIP User", "🔑 My VIP Users"],
-    ["✏️ Edit VIP", "🗑 Delete VIP"],
-    ["👤 Create Reseller", "📊 Reseller List"],
-    ["✏️ Edit Reseller", "🗑 Delete Reseller"],
-    ["🌐 View All VIPs", "💰 My Balance"]
+    ["➕ Add VIP User", "✏️ Edit VIP", "🗑 Delete VIP"],
+    ["🌐 View All VIPs"],
+    ["👤 Create Reseller", "✏️ Edit Reseller", "🗑 Delete Reseller"],
+    ["📊 Reseller List", "🔑 My VIP Users"],
+    ["💰 My Balance"]
 ]
 
 RESELLER_BUTTONS = [
