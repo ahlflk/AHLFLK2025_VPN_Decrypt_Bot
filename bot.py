@@ -36,14 +36,14 @@ ADMIN_BUTTONS = [
     ["➕ Add VIP User", "✏️ Edit VIP", "🗑 Delete VIP"],
     ["🌐 View All VIPs"],
     ["👤 Create Reseller", "✏️ Edit Reseller", "🗑 Delete Reseller"],
-    ["📊 Reseller List", "🔑 My VIP Users"],
+    ["🔑 My VIP Users", "📊 Reseller List"],
     ["💰 My Balance"]
 ]
 
 RESELLER_BUTTONS = [
     ["🌐 VPN Decrypt List"],
-    ["➕ Add VIP User", "🔑 My VIP Users"],
-    ["✏️ Edit VIP", "🗑 Delete VIP"],
+    ["🔑 My VIP Users"],
+    ["➕ Add VIP User", "✏️ Edit VIP", "🗑 Delete VIP"],
     ["💰 My Balance"]
 ]
 
