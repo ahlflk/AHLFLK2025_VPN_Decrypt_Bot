@@ -261,45 +261,46 @@ def pull_data_from_google_sheet():
             conn = sqlite3.connect(DB_FILE, check_same_thread=False)
             try:
                 cursor = conn.cursor()
-                cursor.execute("DELETE FROM auth_keys")
 
                 cursor.execute("SELECT tg_id, last_known_role FROM users")
                 old_roles = {r[0]: r[1] for r in cursor.fetchall()}
-                
-                cursor.execute("DELETE FROM users WHERE tg_id != ?", (ADMIN_ID,))
-                
+
+                active_resellers = [ADMIN_ID]
+                active_vips = []
+
                 for row in data_list:
                     col_a = str(row.get("Users") or "").strip() 
                     k_str = str(row.get("Name") or "").strip()  
                     key_apk = str(row.get("Key") or "").strip() 
-                    c_at = row.get("Start") or get_current_date_string()
+                    c_at = row.get("Start") or ""
                     m_val = row.get("Month") or 0
                     
                     if k_str == "": continue
+
+                    c_at_str = str(c_at).strip()
+                    start_dt = None
+                    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%m/%d/%Y"):
+                        try:
+                            start_dt = datetime.strptime(c_at_str, fmt)
+                            break
+                        except ValueError: continue
+                    if not start_dt:
+                        start_dt = datetime.utcnow() + timedelta(hours=7)
                     
+                    final_date_str = start_dt.strftime("%d/%m/%Y")
+
                     if "_Reseller" in k_str:
                         try:
                             clean_name = k_str.replace("_Reseller", "").strip()
                             token_val = int(float(key_apk)) if '.' in key_apk else int(key_apk)
-
                             clean_months = int(float(m_val)) if str(m_val).replace('.','',1).isdigit() else 0
-                            c_at_str = str(c_at).strip()
                             
-                            start_dt = None
-                            for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%m/%d/%Y"):
-                                try:
-                                    start_dt = datetime.strptime(c_at_str, fmt)
-                                    break
-                                except ValueError:
-                                    continue
-                            
-                            if not start_dt:
-                                start_dt = datetime.utcnow() + timedelta(hours=7)
-                                
                             exp_date = (start_dt + timedelta(days=clean_months * 30)).strftime("%d/%m/%Y")
 
                             u_id = int(col_a)
+                            active_resellers.append(u_id)
                             saved_lk_role = old_roles.get(u_id, 'Reseller Staff 💼')
+                            
                             cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, token_balance, expire_date, last_known_role) VALUES (?, ?, ?, ?, ?, ?)", 
                                            (u_id, clean_name, 'reseller', token_val, exp_date, saved_lk_role))
                         except: pass
@@ -308,9 +309,22 @@ def pull_data_from_google_sheet():
                             clean_months = int(float(m_val)) if str(m_val).replace('.','',1).isdigit() else 1
                             final_creator = int(col_a) if col_a.isdigit() else ADMIN_ID
                             
-                            cursor.execute("INSERT OR IGNORE INTO auth_keys (target_id, key_string, unit_val, duration_type, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)", 
-                                           (key_apk, k_str, str(clean_months), "m", final_creator, str(c_at).strip()))
+                            cursor.execute("INSERT OR REPLACE INTO auth_keys (target_id, key_string, unit_val, duration_type, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)", 
+                                           (key_apk, k_str, str(clean_months), "m", final_creator, final_date_str))
+                            
+                            if key_apk.isdigit():
+                                active_vips.append(key_apk)
                         except: pass
+
+                p_res = ",".join("?" for _ in active_resellers)
+                cursor.execute(f"DELETE FROM users WHERE tg_id NOT IN ({p_res})", active_resellers)
+
+                if active_vips:
+                    p_vip = ",".join("?" for _ in active_vips)
+                    cursor.execute(f"DELETE FROM auth_keys WHERE target_id NOT IN ({p_vip})")
+                else:
+                    cursor.execute("DELETE FROM auth_keys")
+
                 conn.commit()
             finally:
                 conn.close()
