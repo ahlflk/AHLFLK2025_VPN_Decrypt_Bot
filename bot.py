@@ -286,21 +286,29 @@ def pull_data_from_google_sheet():
                             clean_name = k_str.replace("_Reseller", "").strip()
                             token_val = int(float(key_apk)) if '.' in key_apk else int(key_apk)
                             
-                            # Calculating Expire Date for Resellers based on Months
+                            # === DATE PARSING ===
                             clean_months = int(float(m_val)) if str(m_val).replace('.','',1).isdigit() else 0
                             c_at_str = str(c_at).strip()
-                            fmt = "%d/%m/%Y" if '/' in c_at_str else "%Y-%m-%d"
-                            try:
-                                start_dt = datetime.strptime(c_at_str, fmt)
-                                exp_date = (start_dt + timedelta(days=clean_months*30)).strftime("%d/%m/%Y")
-                            except:
-                                exp_date = "31/12/2099"
+                            
+                            start_dt = None
+                            for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%m/%d/%Y"):
+                                try:
+                                    start_dt = datetime.strptime(c_at_str, fmt)
+                                    break
+                                except ValueError:
+                                    continue
+                            
+                            if not start_dt:
+                                start_dt = datetime.utcnow() + timedelta(hours=7)
+                                
+                            exp_date = (start_dt + timedelta(days=clean_months * 30)).strftime("%d/%m/%Y")
 
                             u_id = int(col_a)
                             saved_lk_role = old_roles.get(u_id, 'Reseller Staff 💼')
                             cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, token_balance, expire_date, last_known_role) VALUES (?, ?, ?, ?, ?, ?)", 
                                            (u_id, clean_name, 'reseller', token_val, exp_date, saved_lk_role))
                         except: pass
+
                     else:
                         try:
                             clean_months = int(float(m_val)) if str(m_val).replace('.','',1).isdigit() else 1
@@ -567,8 +575,8 @@ def handle_menu_clicks(message):
 
     if text == "🌐 VPN Decrypt List":
         current_role_name = role_str if valid else "Expired or Normal"
-        # User Role ပြောင်းလဲသွားမှသာ Welcome Message အသစ်ကို အရင်ပြမည်ဖြစ်သည်
-        role_changed = check_and_update_user_role(user_id, current_role_name)
+        # နောက်ကွယ်ကနေ Role ကို Update လုပ်ပေးမည် (သို့သော် Message လှမ်းမပြတော့ပါ)
+        check_and_update_user_role(user_id, current_role_name)
 
         # သက်တမ်းကုန်သွားပါက ခွင့်ပြုချက်မပေးဘဲ Reply Message သီးသန့်သာပြပြီး Admin Contact တွဲပေးခြင်း
         if not valid:
@@ -576,20 +584,6 @@ def handle_menu_clicks(message):
             return bot.send_message(message.chat.id, "👇 Admin အား ဆက်သွယ်ရန် ခလုတ်ကိုနှိပ်ပါ-", reply_markup=get_admin_contact_markup())
             
         configs = get_vpn_configs()
-        bot_name = bot.get_me().first_name
-        first_name = message.from_user.first_name
-        tokens_line = f"🪙 Credit Balance: <code>{get_reseller_tokens(user_id)}</code> Tokens\n" if is_reseller(user_id) and not is_admin(user_id) else ""
-
-        # အဆင့်အတန်း အမှန်တကယ် ချိန်းသွားမှသာ Welcome Message စာတန်းကို အပေါ်ကနေ တွဲပြပေးမည်
-        if role_changed:
-            welcome_msg_str = f"👋 <b>{bot_name} မှ\nနွေးထွေးစွာ ကြိုဆိုပါတယ်!</b>\n\n" \
-                              f"📊 <b>အကောင့်အခြေအနေ (Account Info):</b>\n" \
-                              f"👑 အဆင့်အတန်း: <b>{role_str} (Updated)</b>\n" \
-                              f"👤 အမည်: <b>{first_name}</b>\n" \
-                              f"🆔 Telegram ID: <code>{user_id}</code>\n" \
-                              f"{tokens_line}" \
-                              f"⏳ သက်တမ်းကုန်မည့်ရက်: <code>{exp_date}</code>\n\n"
-            bot.send_message(message.chat.id, welcome_msg_str, parse_mode="HTML")
 
         # Config Lists စာသားနှင့် Inline Markup ခလုတ်များ (Main Menu Keyboard ပြန်မခေါ်ပါ)
         config_text = f"--- <b>Decrypt Configurations List</b> ---\n" \
