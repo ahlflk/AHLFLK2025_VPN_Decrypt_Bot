@@ -643,26 +643,49 @@ def handle_menu_clicks(message):
         bot.reply_to(message, res, parse_mode="HTML")
 
 # ==========================================
-# DECRYPT CALLBACK HANDLER
+# DECRYPT CALLBACK HANDLER (FIXED)
 # ==========================================
 @bot.callback_query_handler(func=lambda call: call.data.startswith('dec_'))
 def handle_decrypt_callback(call):
     chat_id = call.message.chat.id
-    user_id = call.from_user.id
+    user_id = call.from_user.id  # ခလုတ်နှိပ်လိုက်တဲ့လူရဲ့ ID ကို သေချာရယူပါတယ်
     
+    # ၁။ လက်ရှိ ခလုတ်နှိပ်တဲ့သူရဲ့ သက်တမ်းကို အရင်ဆုံး တိတိကျကျ စစ်ဆေးမယ်
+    pull_data_from_google_sheet() # နောက်ဆုံးအခြေအနေ သိရအောင် Sync လုပ်ပေးတာ ပိုစိတ်ချရပါတယ်
     valid, _, _ = is_access_valid(user_id)
+    
     if not valid:
-        bot.answer_callback_query(call.id, "🚫 သင်သည် သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သည်။")
-        # Inline Keyboard မှ တိုက်ရိုက်နှိပ်လာလျှင်လည်း Menu ပြန်ပြင်ပြီး Admin Contact သို့ ညွှန်ပြပေးခြင်း
-        bot.send_message(chat_id, "🚫 သင်သည် သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သဖြင့် အသုံးပြု၍မရပါ။ Decrypt List ကို ပိတ်ထားပါသည်။ Admin ထံ ဆက်သွယ်ပါ။", reply_markup=get_menu_markup(user_id))
-        return bot.send_message(chat_id, "👇 Admin အား ဆက်သွယ်ရန် ခလုတ်ကိုနှိပ်ပါ-", reply_markup=get_admin_contact_markup())
+        # ခလုတ်အဟောင်းကို ဆက်နှိပ်လို့ မရအောင် စာသားပြောင်းပြီး Inline Keyboard ကို ဖျက်ချလိုက်မယ်
+        try:
+            bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                text="🚫 <b>သင်သည် သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သဖြင့် ဤ Config List အား အသုံးပြု၍ မရတော့ပါ။</b>",
+                parse_mode="HTML",
+                reply_markup=None # ခလုတ်တွေကို လုံးဝ ဖျက်ဆီးပစ်တာပါ
+            )
+        except Exception as e:
+            print(f"Edit message error: {e}")
+            
+        # Alert pop-up ပြပေးမယ်
+        bot.answer_callback_query(call.id, "🚫 သင်သည် သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သည်။", show_alert=True)
+        
+        # Admin ဆက်သွယ်ရန် message အသစ် ပို့ပေးမယ်
+        bot.send_message(chat_id, "🚫 သင်သည် သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သဖြင့် အသုံးပြု၍မရပါ။ Admin ထံ ဆက်သွယ်ပါ။", reply_markup=get_admin_contact_markup())
+        return
 
+    # သက်တမ်းရှိရင် ပုံမှန်အတိုင်း ဆက်လုပ်မယ်
     vpn_id = call.data.split('_')[1]
     configs = get_vpn_configs()
     selected_vpn = next((item for item in configs if item["id"] == vpn_id), None)
-    if not selected_vpn: return
+    if not selected_vpn: 
+        bot.answer_callback_query(call.id, "❌ Config မတွေ့ရှိပါ။")
+        return
 
-    status_msg = bot.send_message(chat_id, f"⏳ <b>{selected_vpn['name']} Config Decrypt လုပ်နေပါတယ်...</b>", parse_mode="HTML")
+    # Callback loading ကို ပိတ်ပေးတာ (နာရီပတ်လေး လည်နေတာ ရပ်သွားအောင်)
+    bot.answer_callback_query(call.id, "🔄 Processing...")
+
+    status_msg = bot.send_message(chat_id, f"⏳ <b>{selected_vpn['name']} Config ကို Decrypt လုပ်နေပါတယ်...</b>", parse_mode="HTML")
     try:
         result_json = perform_decryption(selected_vpn["url"], selected_vpn["outer_key"], selected_vpn["outer_delta"], selected_vpn["method"])
         temp_file_path = f"{vpn_id}_decrypted.json"
@@ -674,8 +697,8 @@ def handle_decrypt_callback(call):
             bot.send_document(chat_id, doc, caption=f"✅ <b>{selected_vpn['name']} Config Decrypted Successfully!</b>", parse_mode="HTML")
         if os.path.exists(temp_file_path): os.remove(temp_file_path)
     except Exception as e:
-        bot.send_message(chat_id, f"❌ <b>Error:</b> <code>{str(e)}</code>\nပြဿနာ တစ်စုံတစ်ရာရှိပါက Admin ထံသို့ မေးမြန်းနိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
-
+        bot.delete_message(chat_id, status_msg.message_id)
+        bot.send_message(chat_id, f"❌ <b>Error:</b> <code>{str(e)}</code>\nပြဿနာတစ်စုံတစ်ရာရှိပါက Admin သို့ မေးမြန်းနိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
 
 # ==========================================
 # INPUT HANDLERS (STATE MANAGEMENT)
