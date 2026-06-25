@@ -47,6 +47,12 @@ RESELLER_BUTTONS = [
     ["💰 My Balance"]
 ]
 
+# VIP Active User ဖြစ်ပါက Decrypt List ပါ မြင်ရစေရန် Button ခွဲထားခြင်း
+VIP_ACTIVE_BUTTONS = [
+    ["🌐 VPN Decrypt List"],
+    ["💰 My Balance"]
+]
+
 USER_BUTTONS = [
     ["💰 My Balance"]
 ]
@@ -60,8 +66,14 @@ def get_menu_markup(user_id):
         for row in RESELLER_BUTTONS:
             markup.add(*[types.KeyboardButton(b) for b in row])
     else:
-        for row in USER_BUTTONS:
-            markup.add(*[types.KeyboardButton(b) for b in row])
+        # User သက်တမ်းရှိမရှိ စစ်ဆေးပြီး Menu ခလုတ် ပြောင်းလဲပေးခြင်း
+        valid, role_str, _ = is_access_valid(user_id)
+        if valid and role_str == "VIP User ✨":
+            for row in VIP_ACTIVE_BUTTONS:
+                markup.add(*[types.KeyboardButton(b) for b in row])
+        else:
+            for row in USER_BUTTONS:
+                markup.add(*[types.KeyboardButton(b) for b in row])
     return markup
 
 def get_admin_contact_markup():
@@ -486,9 +498,10 @@ def handle_balance_click(message):
             return bot.reply_to(message, res, reply_markup=get_menu_markup(user_id), parse_mode="HTML")
             
     else:
+        # VIP User သက်တမ်းကုန်သွားသော်လည်း My Balance ကို ဆက်ဖွင့်ပေးထားခြင်း
         if not valid:
             res = f"💰 <b>သင့်ရဲ့ လက်ကျန် Balance အခြေအနေ:</b>\n\n" \
-                  f"👑 အဆင့်အတန်း: <b>Normal User 🙂</b>\n" \
+                  f"👑 အဆင့်အတန်း: <b>VIP User ✨ (Expired)</b>\n" \
                   f"🆔 TG ID: <code>{user_id}</code>\n" \
                   f"⏳ သက်တမ်း: <code>Expired (ကုန်ဆုံး)</code>\n\n" \
                   f"⚠️ သင့် VIP သက်တမ်းကုန်ဆုံးနေပါသဖြင့် Admin ထံသို့ ဆက်သွယ်ပါ။"
@@ -504,7 +517,7 @@ def handle_balance_click(message):
 # ==========================================
 # GENERAL PANEL BUTTONS & DECRYPT
 # ==========================================
-@bot.message_handler(func=lambda msg: any(msg.text in row for row in ADMIN_BUTTONS + RESELLER_BUTTONS + USER_BUTTONS))
+@bot.message_handler(func=lambda msg: any(msg.text in row for row in ADMIN_BUTTONS + RESELLER_BUTTONS + VIP_ACTIVE_BUTTONS + USER_BUTTONS))
 def handle_menu_clicks(message):
     user_id = message.from_user.id
     text = message.text
@@ -513,8 +526,10 @@ def handle_menu_clicks(message):
     valid, role_str, exp_date = is_access_valid(user_id)
 
     if text == "🌐 VPN Decrypt List":
+        # သက်တမ်းကုန်သွားပါက ခွင့်ပြုချက်မပေးဘဲ Admin Contact ပြောင်းလဲပြသခြင်း
         if not valid:
-            return bot.reply_to(message, "🚫 <b>ခွင့်ပြုချက် မရှိပါ (သို့မဟုတ်) သက်တမ်းကုန်နေပါသည်။</b>", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
+            bot.reply_to(message, "🚫 <b>ခွင့်ပြုချက် မရှိပါ (သို့မဟုတ်) သက်တမ်းကုန်နေပါသည်။</b>\n\n⚠️ သင့် VIP သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်၍ Decrypt List ကို ပိတ်ထားပါသည်။", reply_markup=get_menu_markup(user_id), parse_mode="HTML")
+            return bot.send_message(message.chat.id, "👇 Admin အား ဆက်သွယ်ရန် ခလုတ်ကိုနှိပ်ပါ-", reply_markup=get_admin_contact_markup())
             
         configs = get_vpn_configs()
         bot_name = bot.get_me().first_name
@@ -638,15 +653,16 @@ def handle_decrypt_callback(call):
     valid, _, _ = is_access_valid(user_id)
     if not valid:
         bot.answer_callback_query(call.id, "🚫 သင်သည် သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သည်။")
-        bot.send_message(chat_id, "🚫 သင်သည် သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သဖြင့် အသုံးပြု၍မရပါ။ Admin ထံ ဆက်သွယ်ပါ။", reply_markup=get_admin_contact_markup())
-        return
+        # Inline Keyboard မှ တိုက်ရိုက်နှိပ်လာလျှင်လည်း Menu ပြန်ပြင်ပြီး Admin Contact သို့ ညွှန်ပြပေးခြင်း
+        bot.send_message(chat_id, "🚫 သင်သည် သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သဖြင့် အသုံးပြု၍မရပါ။ Decrypt List ကို ပိတ်ထားပါသည်။ Admin ထံ ဆက်သွယ်ပါ။", reply_markup=get_menu_markup(user_id))
+        return bot.send_message(chat_id, "👇 Admin အား ဆက်သွယ်ရန် ခလုတ်ကိုနှိပ်ပါ-", reply_markup=get_admin_contact_markup())
 
     vpn_id = call.data.split('_')[1]
     configs = get_vpn_configs()
     selected_vpn = next((item for item in configs if item["id"] == vpn_id), None)
     if not selected_vpn: return
 
-    status_msg = bot.send_message(chat_id, f"⏳ <b>{selected_vpn['name']} Config ကို Decrypt လုပ်နေပါတယ်...</b>", parse_mode="HTML")
+    status_msg = bot.send_message(chat_id, f"⏳ <b>{selected_vpn['name']} Config Decrypt လုပ်နေပါတယ်...</b>", parse_mode="HTML")
     try:
         result_json = perform_decryption(selected_vpn["url"], selected_vpn["outer_key"], selected_vpn["outer_delta"], selected_vpn["method"])
         temp_file_path = f"{vpn_id}_decrypted.json"
@@ -658,7 +674,7 @@ def handle_decrypt_callback(call):
             bot.send_document(chat_id, doc, caption=f"✅ <b>{selected_vpn['name']} Config Decrypted Successfully!</b>", parse_mode="HTML")
         if os.path.exists(temp_file_path): os.remove(temp_file_path)
     except Exception as e:
-        bot.send_message(chat_id, f"❌ <b>Error:</b> <code>{str(e)}</code>\nပြဿနာတစ်စုံတစ်ရာရှိပါက Admin သို့ မေးမြန်းနိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
+        bot.send_message(chat_id, f"❌ <b>Error:</b> <code>{str(e)}</code>\nပြဿနာ တစ်စုံတစ်ရာရှိပါက Admin ထံသို့ မေးမြန်းနိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
 
 
 # ==========================================
@@ -819,7 +835,7 @@ def handle_inputs(message):
             else:
                 bot.reply_to(message, f"✅ Reseller (ID: <code>{r_id}</code>) အား ဖန်တီးပြီးပါပြီ။\n🆔 Telegram ID: <code>{r_id}</code>\n👤 Name: {reseller_temp_data[user_id]['username']}\n🪙 Token Count: {tokens} Tk\n⏳ Expired: {months} Months", parse_mode="HTML")
         else:
-            bot.reply_to(message, "❌ Google Sheet ချိတ်ဆက်မှု လွဲချော်နေပါသည်။")
+            bot.reply_to(message, "❌ Google Sheet ချက်ဆက်မှု လွဲချော်နေပါသည်။")
         user_states[user_id] = None
 
     # --- EDIT RESELLER ---
