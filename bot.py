@@ -47,7 +47,6 @@ RESELLER_BUTTONS = [
     ["💰 My Balance"]
 ]
 
-# VIP Active User ဖြစ်ပါက Decrypt List ပါ မြင်ရစေရန် Button ခွဲထားခြင်း
 VIP_ACTIVE_BUTTONS = [
     ["🌐 VPN Decrypt List"],
     ["💰 My Balance"]
@@ -66,7 +65,6 @@ def get_menu_markup(user_id):
         for row in RESELLER_BUTTONS:
             markup.add(*[types.KeyboardButton(b) for b in row])
     else:
-        # User သက်တမ်းရှိမရှိ စစ်ဆေးပြီး Menu ခလုတ် ပြောင်းလဲပေးခြင်း
         valid, role_str, _ = is_access_valid(user_id)
         if valid and role_str == "VIP User ✨":
             for row in VIP_ACTIVE_BUTTONS:
@@ -240,8 +238,7 @@ def init_db():
             expire_date TEXT DEFAULT '31/12/2099',
             last_known_role TEXT DEFAULT 'Normal User 🙂'
         )''')
-        
-        # Check if last_known_role column exists, if not alter table
+
         cursor.execute("PRAGMA table_info(users)")
         columns = [col[1] for col in cursor.fetchall()]
         if 'last_known_role' not in columns:
@@ -265,8 +262,7 @@ def pull_data_from_google_sheet():
             try:
                 cursor = conn.cursor()
                 cursor.execute("DELETE FROM auth_keys")
-                
-                # Fetch old roles and balances to preserve last_known_role
+
                 cursor.execute("SELECT tg_id, last_known_role FROM users")
                 old_roles = {r[0]: r[1] for r in cursor.fetchall()}
                 
@@ -285,8 +281,7 @@ def pull_data_from_google_sheet():
                         try:
                             clean_name = k_str.replace("_Reseller", "").strip()
                             token_val = int(float(key_apk)) if '.' in key_apk else int(key_apk)
-                            
-                            # === DATE PARSING ===
+
                             clean_months = int(float(m_val)) if str(m_val).replace('.','',1).isdigit() else 0
                             c_at_str = str(c_at).strip()
                             
@@ -308,7 +303,6 @@ def pull_data_from_google_sheet():
                             cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, token_balance, expire_date, last_known_role) VALUES (?, ?, ?, ?, ?, ?)", 
                                            (u_id, clean_name, 'reseller', token_val, exp_date, saved_lk_role))
                         except: pass
-
                     else:
                         try:
                             clean_months = int(float(m_val)) if str(m_val).replace('.','',1).isdigit() else 1
@@ -443,7 +437,6 @@ def is_access_valid(user_id):
         conn.close()
     return False, "Expired or Not Found", "-"
 
-# User ရဲ့ Role ပြောင်းလဲမှု ရှိမရှိ စစ်ဆေးပြီး Update လုပ်ပေးမည့် Function
 def check_and_update_user_role(user_id, current_role_str):
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     try:
@@ -455,13 +448,13 @@ def check_and_update_user_role(user_id, current_role_str):
             if old_role != current_role_str:
                 cursor.execute("UPDATE users SET last_known_role = ? WHERE tg_id = ?", (current_role_str, user_id))
                 conn.commit()
-                return True # Role ပြောင်းလဲမှု ရှိခဲ့သည်
+                return True
             return False
         else:
             cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, token_balance, expire_date, last_known_role) VALUES (?, ?, ?, ?, ?, ?)",
                            (user_id, 'User', 'normal', 0, '01/01/2000', current_role_str))
             conn.commit()
-            return True # အသစ်ဆောက်လိုက်သဖြင့် ပြောင်းလဲမှုရှိသည်ဟု သတ်မှတ်
+            return True
     finally:
         conn.close()
 
@@ -505,8 +498,7 @@ def send_welcome(message):
                    f"🆔 Telegram ID: <code>{user_id}</code>\n" \
                    f"{tokens_line}" \
                    f"⏳ သက်တမ်းကုန်ဆုံးမည့်ရက်: <code>{exp_date}</code>\n\n" \
-                   f"💡 အောက်ပါ Panel Keyboard ကို အသုံးပြုပြီး လုပ်ငန်းများကို ဆောင်ရွက်နိုင်ပါသည်။"
-    
+                   f"💡 အောက်ပါ Panel Keyboard ကို အသုံးပြုပြီး လုပ်ငန်းများကို ဆောင်ရွက်နိုင်ပါသည်။"    
     bot.reply_to(message, welcome_text, reply_markup=get_menu_markup(user_id), parse_mode="HTML")
 
 # ==========================================
@@ -546,7 +538,6 @@ def handle_balance_click(message):
             return bot.reply_to(message, res, reply_markup=get_menu_markup(user_id), parse_mode="HTML")
             
     else:
-        # VIP User သက်တမ်းကုန်သွားသော်လည်း My Balance ကို ဆက်ဖွင့်ပေးထားခြင်း
         if not valid:
             res = f"💰 <b>သင့်ရဲ့ လက်ကျန် Balance အခြေအနေ:</b>\n\n" \
                   f"👑 အဆင့်အတန်း: <b>VIP User ✨ (Expired)</b>\n" \
@@ -575,32 +566,27 @@ def handle_menu_clicks(message):
 
     if text == "🌐 VPN Decrypt List":
         current_role_name = role_str if valid else "Expired or Normal"
-        # နောက်ကွယ်ကနေ Role ကို Update လုပ်ပေးမည် (သို့သော် Message လှမ်းမပြတော့ပါ)
         check_and_update_user_role(user_id, current_role_name)
 
-        # သက်တမ်းကုန်သွားပါက ခွင့်ပြုချက်မပေးဘဲ Reply Message သီးသန့်သာပြပြီး Admin Contact တွဲပေးခြင်း
         if not valid:
             bot.reply_to(message, "🚫 <b>ခွင့်ပြုချက် မရှိပါ (သို့မဟုတ်) သက်တမ်းကုန်နေပါသည်။</b>\n\n⚠️ သင့် VIP သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်၍ Decrypt List ကို ပိတ်ထားပါသည်။", parse_mode="HTML")
             return bot.send_message(message.chat.id, "👇 Admin အား ဆက်သွယ်ရန် ခလုတ်ကိုနှိပ်ပါ-", reply_markup=get_admin_contact_markup())
             
         configs = get_vpn_configs()
 
-        # Config Lists စာသားနှင့် Inline Markup ခလုတ်များ (Main Menu Keyboard ပြန်မခေါ်ပါ)
         config_text = f"--- <b>Decrypt Configurations List</b> ---\n" \
-                      f"🛠️ Decrypt လုပ်ချင်တဲ့ VPN Config အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ-"
+                      f"🛠️ Decrypt လုပ်ချင်တဲ့ VPN APK\nConfig အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ-"
 
         markup = types.InlineKeyboardMarkup(row_width=2)
         buttons = [types.InlineKeyboardButton(f"[{i}] {vpn['name']}", callback_data=f"dec_{vpn['id']}") for i, vpn in enumerate(configs, 1)]
         for i in range(0, len(buttons), 2):
             markup.row(*buttons[i:i+2])
 
-        # reply_to ဖြင့် သာမန် Reply text message အနေနှင့်ပဲ ပို့ပေးလိုက်ပါတယ်
         return bot.reply_to(message, config_text, reply_markup=markup, parse_mode="HTML")
 
     if text == "💰 My Balance":
         return handle_balance_click(message)
 
-    # Restrict Reseller/Admin Menus
     if text in ["➕ Add VIP User", "🔑 My VIP Users", "✏️ Edit VIP", "🗑 Delete VIP", "👤 Create Reseller", "📊 Reseller List", "✏️ Edit Reseller", "🗑 Delete Reseller", "🌐 View All VIPs"]:
         if not is_reseller(user_id):
             return bot.reply_to(message, "❌ <b>ခွင့်ပြုချက် မရှိပါ!</b>", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
@@ -692,17 +678,14 @@ def handle_menu_clicks(message):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('dec_'))
 def handle_decrypt_callback(call):
     chat_id = call.message.chat.id
-    user_id = call.from_user.id  # ခလုတ်နှိပ်လိုက်တဲ့လူရဲ့ ID ကို သေချာရယူပါတယ်
-    
-    # ၁။ လက်ရှိ ခလုတ်နှိပ်တဲ့သူရဲ့ သက်တမ်းကို အရင်ဆုံး တိတိကျကျ စစ်ဆေးမယ်
-    pull_data_from_google_sheet() # နောက်ဆုံးအခြေအနေ သိရအောင် Sync လုပ်ပေးတာ ပိုစိတ်ချရပါတယ်
+    user_id = call.from_user.id
+
+    pull_data_from_google_sheet()
     valid, _, _ = is_access_valid(user_id)
     
     if not valid:
-        # Alert pop-up ပြမည့်အစား Loading လည်နေတာကိုပဲ ပုံမှန်အတိုင်း အသံတိတ်ပိတ်ပေးပါမည်
         bot.answer_callback_query(call.id)
-        
-        # မူရင်း Config List ခလုတ်တွေကို ဖျက်မချပါ၊ Chat ထဲမှာပဲ Reply Text Message သာပို့ပေးပါမည်
+
         bot.send_message(
             chat_id, 
             "🚫 <b>သင်သည် သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သဖြင့် ဤ Config အား အသုံးပြု၍ မရတော့ပါ။</b>\n\n" \
@@ -712,7 +695,6 @@ def handle_decrypt_callback(call):
         )
         return
 
-    # သက်တမ်းရှိရင် ပုံမှန်အတိုင်း ဆက်လုပ်မယ်
     vpn_id = call.data.split('_')[1]
     configs = get_vpn_configs()
     selected_vpn = next((item for item in configs if item["id"] == vpn_id), None)
@@ -720,7 +702,6 @@ def handle_decrypt_callback(call):
         bot.answer_callback_query(call.id, "❌ Config မတွေ့ရှိပါ။")
         return
 
-    # Callback loading ကို ပိတ်ပေးတာ (နာရီပတ်လေး လည်နေတာ ရပ်သွားအောင်)
     bot.answer_callback_query(call.id, "🔄 Processing...")
 
     status_msg = bot.send_message(chat_id, f"⏳ <b>{selected_vpn['name']} Config ကို Decrypt လုပ်နေပါတယ်...</b>", parse_mode="HTML")
