@@ -237,10 +237,18 @@ def init_db():
             username TEXT, 
             role TEXT,
             token_balance INTEGER DEFAULT 0,
-            expire_date TEXT DEFAULT '31/12/2099'
+            expire_date TEXT DEFAULT '31/12/2099',
+            last_known_role TEXT DEFAULT 'Normal User 🙂'
         )''')
-        cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, token_balance, expire_date) VALUES (?, ?, ?, ?, ?)", 
-                       (ADMIN_ID, 'Main_Admin', 'admin', -1, '31/12/2099'))
+        
+        # Check if last_known_role column exists, if not alter table
+        cursor.execute("PRAGMA table_info(users)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'last_known_role' not in columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN last_known_role TEXT DEFAULT 'Normal User 🙂'")
+            
+        cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, token_balance, expire_date, last_known_role) VALUES (?, ?, ?, ?, ?, ?)", 
+                       (ADMIN_ID, 'Main_Admin', 'admin', -1, '31/12/2099', 'Main Admin 👑'))
         conn.commit()
     finally:
         conn.close()
@@ -257,6 +265,11 @@ def pull_data_from_google_sheet():
             try:
                 cursor = conn.cursor()
                 cursor.execute("DELETE FROM auth_keys")
+                
+                # Fetch old roles and balances to preserve last_known_role
+                cursor.execute("SELECT tg_id, last_known_role FROM users")
+                old_roles = {r[0]: r[1] for r in cursor.fetchall()}
+                
                 cursor.execute("DELETE FROM users WHERE tg_id != ?", (ADMIN_ID,))
                 
                 for row in data_list:
@@ -283,8 +296,10 @@ def pull_data_from_google_sheet():
                             except:
                                 exp_date = "31/12/2099"
 
-                            cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, token_balance, expire_date) VALUES (?, ?, ?, ?, ?)", 
-                                           (int(col_a), clean_name, 'reseller', token_val, exp_date))
+                            u_id = int(col_a)
+                            saved_lk_role = old_roles.get(u_id, 'Reseller Staff 💼')
+                            cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, token_balance, expire_date, last_known_role) VALUES (?, ?, ?, ?, ?, ?)", 
+                                           (u_id, clean_name, 'reseller', token_val, exp_date, saved_lk_role))
                         except: pass
                     else:
                         try:
@@ -420,6 +435,28 @@ def is_access_valid(user_id):
         conn.close()
     return False, "Expired or Not Found", "-"
 
+# User ရဲ့ Role ပြောင်းလဲမှု ရှိမရှိ စစ်ဆေးပြီး Update လုပ်ပေးမည့် Function
+def check_and_update_user_role(user_id, current_role_str):
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT last_known_role FROM users WHERE tg_id = ?", (user_id,))
+        res = cursor.fetchone()
+        if res:
+            old_role = res[0]
+            if old_role != current_role_str:
+                cursor.execute("UPDATE users SET last_known_role = ? WHERE tg_id = ?", (current_role_str, user_id))
+                conn.commit()
+                return True # Role ပြောင်းလဲမှု ရှိခဲ့သည်
+            return False
+        else:
+            cursor.execute("INSERT OR REPLACE INTO users (tg_id, username, role, token_balance, expire_date, last_known_role) VALUES (?, ?, ?, ?, ?, ?)",
+                           (user_id, 'User', 'normal', 0, '01/01/2000', current_role_str))
+            conn.commit()
+            return True # အသစ်ဆောက်လိုက်သဖြင့် ပြောင်းလဲမှုရှိသည်ဟု သတ်မှတ်
+    finally:
+        conn.close()
+
 # ==========================================
 # TELEGRAM MENU INTERFACE
 # ==========================================
@@ -433,14 +470,17 @@ def send_welcome(message):
     bot_name = bot.get_me().first_name
 
     valid, role_str, exp_date = is_access_valid(user_id)
+    current_role_name = role_str if valid else "Expired or Normal"
+    check_and_update_user_role(user_id, current_role_name)
 
     if not valid:
         welcome_text = f"👋 <b>{bot_name} မှ ကြိုဆိုပါတယ်!</b>\n\n" \
                        f"📊 <b>အကောင့်အခြေအနေ:</b>\n" \
-                       f"👑 အဆင့်အတန်း: <b>Normal User 🙂</b>\n" \
+                       f"👑 အဆင့်အတန်း: <b>Normal User 🙂 (သို့မဟုတ်) သက်တမ်းကုန်ဆုံး</b>\n" \
                        f"👤 အမည်: <b>{first_name}</b>\n" \
                        f"🆔 Telegram ID: <code>{user_id}</code>\n\n" \
-                       f"⚠️ သင်သည် ခွင့်ပြုထားသော Reseller/VIP မဟုတ်ပါ (သို့မဟုတ်) သက်တမ်းကုန်ဆုံးသွားပါပြီ။ Admin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။"
+                       f"🚫 <b>ခွင့်ပြုချက်မရှိပါ (သို့မဟုတ်) သက်တမ်းကုန်ဆုံးနေပါသည်။</b>\n\n" \
+                       f"⚠️ သင့် VIP သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်၍ အသုံးပြု၍မရပါ။ Admin ထံ ဆက်သွယ်ပါ။"
         bot.reply_to(message, welcome_text, reply_markup=get_menu_markup(user_id), parse_mode="HTML")
         return bot.send_message(message.chat.id, "👇 Admin အား ဆက်သွယ်ရန် ခလုတ်ကိုနှိပ်ပါ-", reply_markup=get_admin_contact_markup())
 
@@ -526,9 +566,13 @@ def handle_menu_clicks(message):
     valid, role_str, exp_date = is_access_valid(user_id)
 
     if text == "🌐 VPN Decrypt List":
-        # သက်တမ်းကုန်သွားပါက ခွင့်ပြုချက်မပေးဘဲ Admin Contact ပြောင်းလဲပြသခြင်း
+        current_role_name = role_str if valid else "Expired or Normal"
+        # User Role ပြောင်းလဲသွားမှသာ Welcome Message အသစ်ကို အရင်ပြမည်ဖြစ်သည်
+        role_changed = check_and_update_user_role(user_id, current_role_name)
+
+        # သက်တမ်းကုန်သွားပါက ခွင့်ပြုချက်မပေးဘဲ Reply Message သီးသန့်သာပြပြီး Admin Contact တွဲပေးခြင်း
         if not valid:
-            bot.reply_to(message, "🚫 <b>ခွင့်ပြုချက် မရှိပါ (သို့မဟုတ်) သက်တမ်းကုန်နေပါသည်။</b>\n\n⚠️ သင့် VIP သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်၍ Decrypt List ကို ပိတ်ထားပါသည်။", reply_markup=get_menu_markup(user_id), parse_mode="HTML")
+            bot.reply_to(message, "🚫 <b>ခွင့်ပြုချက် မရှိပါ (သို့မဟုတ်) သက်တမ်းကုန်နေပါသည်။</b>\n\n⚠️ သင့် VIP သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်၍ Decrypt List ကို ပိတ်ထားပါသည်။", parse_mode="HTML")
             return bot.send_message(message.chat.id, "👇 Admin အား ဆက်သွယ်ရန် ခလုတ်ကိုနှိပ်ပါ-", reply_markup=get_admin_contact_markup())
             
         configs = get_vpn_configs()
@@ -536,22 +580,28 @@ def handle_menu_clicks(message):
         first_name = message.from_user.first_name
         tokens_line = f"🪙 Credit Balance: <code>{get_reseller_tokens(user_id)}</code> Tokens\n" if is_reseller(user_id) and not is_admin(user_id) else ""
 
-        welcome_text = f"👋 <b>{bot_name} မှ\nနွေးထွေးစွာ ကြိုဆိုပါတယ်!</b>\n\n" \
-                       f"📊 <b>အကောင့်အခြေအနေ (Account Info):</b>\n" \
-                       f"👑 အဆင့်အတန်း: <b>{role_str}</b>\n" \
-                       f"👤 အမည်: <b>{first_name}</b>\n" \
-                       f"🆔 Telegram ID: <code>{user_id}</code>\n" \
-                       f"{tokens_line}" \
-                       f"⏳ သက်တမ်းကုန်မည့်ရက်: <code>{exp_date}</code>\n\n" \
-                       f"--- <b>Decrypt Configurations List</b> ---\n" \
-                       f"🛠️ Decrypt လုပ်ချင်တဲ့ VPN Config အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ-"
+        # အဆင့်အတန်း အမှန်တကယ် ချိန်းသွားမှသာ Welcome Message စာတန်းကို အပေါ်ကနေ တွဲပြပေးမည်
+        if role_changed:
+            welcome_msg_str = f"👋 <b>{bot_name} မှ\nနွေးထွေးစွာ ကြိုဆိုပါတယ်!</b>\n\n" \
+                              f"📊 <b>အကောင့်အခြေအနေ (Account Info):</b>\n" \
+                              f"👑 အဆင့်အတန်း: <b>{role_str} (Updated)</b>\n" \
+                              f"👤 အမည်: <b>{first_name}</b>\n" \
+                              f"🆔 Telegram ID: <code>{user_id}</code>\n" \
+                              f"{tokens_line}" \
+                              f"⏳ သက်တမ်းကုန်မည့်ရက်: <code>{exp_date}</code>\n\n"
+            bot.send_message(message.chat.id, welcome_msg_str, parse_mode="HTML")
+
+        # Config Lists စာသားနှင့် Inline Markup ခလုတ်များ (Main Menu Keyboard ပြန်မခေါ်ပါ)
+        config_text = f"--- <b>Decrypt Configurations List</b> ---\n" \
+                      f"🛠️ Decrypt လုပ်ချင်တဲ့ VPN Config အမျိုးအစားကို အောက်မှာ ရွေးချယ်ပါ-"
 
         markup = types.InlineKeyboardMarkup(row_width=2)
         buttons = [types.InlineKeyboardButton(f"[{i}] {vpn['name']}", callback_data=f"dec_{vpn['id']}") for i, vpn in enumerate(configs, 1)]
         for i in range(0, len(buttons), 2):
             markup.row(*buttons[i:i+2])
 
-        return bot.reply_to(message, welcome_text, reply_markup=markup, parse_mode="HTML")
+        # reply_to ဖြင့် သာမန် Reply text message အနေနှင့်ပဲ ပို့ပေးလိုက်ပါတယ်
+        return bot.reply_to(message, config_text, reply_markup=markup, parse_mode="HTML")
 
     if text == "💰 My Balance":
         return handle_balance_click(message)
@@ -655,23 +705,17 @@ def handle_decrypt_callback(call):
     valid, _, _ = is_access_valid(user_id)
     
     if not valid:
-        # ခလုတ်အဟောင်းကို ဆက်နှိပ်လို့ မရအောင် စာသားပြောင်းပြီး Inline Keyboard ကို ဖျက်ချလိုက်မယ်
-        try:
-            bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                text="🚫 <b>သင်သည် သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သဖြင့် ဤ Config List အား အသုံးပြု၍ မရတော့ပါ။</b>",
-                parse_mode="HTML",
-                reply_markup=None # ခလုတ်တွေကို လုံးဝ ဖျက်ဆီးပစ်တာပါ
-            )
-        except Exception as e:
-            print(f"Edit message error: {e}")
-            
-        # Alert pop-up ပြပေးမယ်
-        bot.answer_callback_query(call.id, "🚫 သင်သည် သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သည်။", show_alert=True)
+        # Alert pop-up ပြမည့်အစား Loading လည်နေတာကိုပဲ ပုံမှန်အတိုင်း အသံတိတ်ပိတ်ပေးပါမည်
+        bot.answer_callback_query(call.id)
         
-        # Admin ဆက်သွယ်ရန် message အသစ် ပို့ပေးမယ်
-        bot.send_message(chat_id, "🚫 သင်သည် သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သဖြင့် အသုံးပြု၍မရပါ။ Admin ထံ ဆက်သွယ်ပါ။", reply_markup=get_admin_contact_markup())
+        # မူရင်း Config List ခလုတ်တွေကို ဖျက်မချပါ၊ Chat ထဲမှာပဲ Reply Text Message သာပို့ပေးပါမည်
+        bot.send_message(
+            chat_id, 
+            "🚫 <b>သင်သည် သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သဖြင့် ဤ Config အား အသုံးပြု၍ မရတော့ပါ။</b>\n\n" \
+            "ကျေးဇူးပြု၍ သက်တမ်းတိုးရန် အောက်ပါ ခလုတ်မှတစ်ဆင့် Admin အား ဆက်သွယ်ပါ။", 
+            parse_mode="HTML",
+            reply_markup=get_admin_contact_markup()
+        )
         return
 
     # သက်တမ်းရှိရင် ပုံမှန်အတိုင်း ဆက်လုပ်မယ်
