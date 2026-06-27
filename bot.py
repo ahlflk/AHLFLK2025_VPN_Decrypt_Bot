@@ -594,7 +594,7 @@ def handle_menu_clicks(message):
             return bot.reply_to(message, "❌ <b>ခွင့်ပြုချက် မရှိပါ!</b>", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
 
         if not valid and not is_admin(user_id):
-            return bot.reply_to(message, "⚠️ သင့်အကောင့် သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်သဖြင့် အသုံးပြု၍မရတော့ပါ။ Admin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
+            return bot.reply_to(message, "⚠️ သင့်အကောင့် သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်၍\nဆက်လက်အသုံးပြု၍ မရတော့ပါ။\nAdmin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
 
     if text == "➕ Add VIP User":
         user_states[user_id] = "ADD_VIP_ID"
@@ -739,7 +739,7 @@ def handle_inputs(message):
 
     if not valid and not is_admin(user_id):
         user_states[user_id] = None
-        return bot.reply_to(message, "⚠️ သင့်အကောင့် သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်သဖြင့် အသုံးပြု၍မရတော့ပါ။ Admin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
+        return bot.reply_to(message, "⚠️ သင့်အကောင့် သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်၍\nဆက်လက်အသုံးပြု၍ မရတော့ပါ။\nAdmin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
 
     # --- ADD VIP ---
     if state == "ADD_VIP_ID":
