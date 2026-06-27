@@ -481,7 +481,7 @@ def send_welcome(message):
                        f"👤 အမည်: <b>{first_name}</b>\n" \
                        f"🆔 Telegram ID: <code>{user_id}</code>\n\n" \
                        f"🚫 <b>ခွင့်ပြုချက်မရှိပါ (သို့မဟုတ်) သက်တမ်းကုန်ဆုံးနေပါသည်။</b>\n\n" \
-                       f"⚠️ သင့် VIP သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်သဖြင့် အသုံးပြု၍မရတော့ပါ။ Admin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။"
+                       f"⚠️ သင့် VIP သက်တမ်းကုန်ဆုံးသွားပြီ ဖြစ်ပါသဖြင့် အသုံးပြု၍မရတော့ပါ။ Admin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။"
         bot.reply_to(message, welcome_text, reply_markup=get_menu_markup(user_id), parse_mode="HTML")
         return bot.send_message(message.chat.id, "👇 Admin အား ဆက်သွယ်ရန် ခလုတ်ကိုနှိပ်ပါ-", reply_markup=get_admin_contact_markup())
 
@@ -526,7 +526,7 @@ def handle_balance_click(message):
                   f"🆔 TG ID: <code>{user_id}</code>\n" \
                   f"🪙 လက်ကျန် Credit: <code>{current_tokens} Tokens</code>\n" \
                   f"⏳ သက်တမ်း: <code>{exp_date} (Expired)</code>\n\n" \
-                  f"⚠️ သင့်အကောင့် သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်သဖြင့် အသုံးပြု၍မရတော့ပါ။ Admin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။"
+                  f"⚠️ သင့်အကောင့် သက်တမ်းကုန်ဆုံးသွားပြီ ဖြစ်ပါသဖြင့် အသုံးပြု၍မရတော့ပါ။ Admin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။"
             bot.reply_to(message, res, reply_markup=get_menu_markup(user_id), parse_mode="HTML")
             return bot.send_message(message.chat.id, "👇 Admin အား ဆက်သွယ်ရန် ခလုတ်ကိုနှိပ်ပါ-", reply_markup=get_admin_contact_markup())
         else:
@@ -543,7 +543,7 @@ def handle_balance_click(message):
                   f"👑 အဆင့်အတန်း: <b>VIP User ✨ (Expired)</b>\n" \
                   f"🆔 TG ID: <code>{user_id}</code>\n" \
                   f"⏳ သက်တမ်း: <code>Expired (ကုန်ဆုံး)</code>\n\n" \
-                  f"⚠️ သင့် VIP သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်သဖြင့် အသုံးပြု၍မရတော့ပါ။ Admin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။"
+                  f"⚠️ သင့် VIP သက်တမ်းကုန်ဆုံးသွားပြီ ဖြစ်ပါသဖြင့် အသုံးပြု၍မရတော့ပါ။ Admin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။"
             bot.reply_to(message, res, reply_markup=get_menu_markup(user_id), parse_mode="HTML")
             return bot.send_message(message.chat.id, "👇 Admin အား ဆက်သွယ်ရန် ခလုတ်ကိုနှိပ်ပါ-", reply_markup=get_admin_contact_markup())
         else:
@@ -569,7 +569,7 @@ def handle_menu_clicks(message):
         check_and_update_user_role(user_id, current_role_name)
 
         if not valid:
-            bot.reply_to(message, "🚫 <b>ခွင့်ပြုချက် မရှိပါ (သို့မဟုတ်) သက်တမ်းကုန်နေပါသည်။</b>\n\n⚠️ သင့် VIP သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်၍ Decrypt List ကို ပိတ်ထားပါသည်။", parse_mode="HTML")
+            bot.reply_to(message, "🚫 <b>ခွင့်ပြုချက် မရှိပါ (သို့မဟုတ်) သက်တမ်းကုန်နေပါသည်။</b>\n\n⚠️ သင့် VIP သက်တမ်းကုန်ဆုံးသွားပြီ ဖြစ်ပါသဖြင့် Decrypt List ကို ပိတ်ထားပါသည်။", parse_mode="HTML")
             return bot.send_message(message.chat.id, "👇 Admin အား ဆက်သွယ်ရန် ခလုတ်ကိုနှိပ်ပါ-", reply_markup=get_admin_contact_markup())
             
         configs = get_vpn_configs()
@@ -594,7 +594,7 @@ def handle_menu_clicks(message):
             return bot.reply_to(message, "❌ <b>ခွင့်ပြုချက် မရှိပါ!</b>", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
 
         if not valid and not is_admin(user_id):
-            return bot.reply_to(message, "⚠️ သင့်အကောင့် သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်၍\nဆက်လက်အသုံးပြု၍ မရတော့ပါ။\nAdmin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
+            return bot.reply_to(message, "⚠️ သင့်အကောင့် သက်တမ်းကုန်ဆုံးသွားပြီ ဖြစ်ပါသဖြင့် ဆက်လက်အသုံးပြု၍ မရတော့ပါ။ Admin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
 
     if text == "➕ Add VIP User":
         user_states[user_id] = "ADD_VIP_ID"
@@ -691,7 +691,7 @@ def handle_decrypt_callback(call):
 
         bot.send_message(
             chat_id, 
-            "🚫 <b>သင်သည် သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်သဖြင့် ဤ Config အား အသုံးပြု၍ မရတော့ပါ။</b>\n\n" \
+            "🚫 <b>သင်သည် သက်တမ်း ကုန်ဆုံးသွားပြီ ဖြစ်ပါသဖြင့် ဤ Config အား အသုံးပြု၍ မရတော့ပါ။</b>\n\n" \
             "ကျေးဇူးပြု၍ သက်တမ်းတိုးရန် အောက်ပါ ခလုတ်မှတစ်ဆင့် Admin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။", 
             parse_mode="HTML",
             reply_markup=get_admin_contact_markup()
@@ -739,14 +739,14 @@ def handle_inputs(message):
 
     if not valid and not is_admin(user_id):
         user_states[user_id] = None
-        return bot.reply_to(message, "⚠️ သင့်အကောင့် သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်၍\nဆက်လက်အသုံးပြု၍ မရတော့ပါ။\nAdmin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
+        return bot.reply_to(message, "⚠️ သင့်အကောင့် သက်တမ်းကုန်ဆုံးသွားပြီ ဖြစ်ပါသဖြင့် ဆက်လက်အသုံးပြု၍ မရတော့ပါ။ Admin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
 
     # --- ADD VIP ---
     if state == "ADD_VIP_ID":
         if is_vip_exists(text):
             vip_temp_data[user_id] = {"apk_id": text, "name": "Edit_VIP"}
             user_states[user_id] = "ADD_VIP_MONTH"
-            bot.reply_to(message, "⚠️ <b>ယခု Telegram ID သည် VIP User ဖြစ်ပြီးသားဖြစ်ပါသဖြင့် သက်တမ်းတိုးမြှင့်ရန်</b>\n\nလအရေအတွက် (ဥပမာ- 1) ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+            bot.reply_to(message, "⚠️ <b>ယခု Telegram ID သည် VIP User ဖြစ်ပြီးသား ဖြစ်ပါသဖြင့် သက်တမ်းတိုးမြှင့်ရန်</b>\n\nလအရေအတွက် (ဥပမာ- 1) ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
         else:
             vip_temp_data[user_id] = {"apk_id": text}
             user_states[user_id] = "ADD_VIP_NAME"
@@ -838,7 +838,7 @@ def handle_inputs(message):
         if is_reseller_exists(text):
             reseller_temp_data[user_id] = {"tg_id": text, "is_edit_mode": True}
             user_states[user_id] = "ADD_RES_TOKENS"
-            bot.reply_to(message, "⚠️ <b>ယခု Telegram ID သည် Reseller ဖြစ်ပြီးသားဖြစ်ပါသဖြင့် တိုကင်တိုးမြှင့်ရန်</b>\n\nထပ်မံပေါင်းထည့်ပေးမည့် <b>Token ပမာဏ (Credits)</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+            bot.reply_to(message, "⚠️ <b>ယခု Telegram ID သည် Reseller ဖြစ်ပြီးသား ဖြစ်ပါသဖြင့် တိုကင်တိုးမြှင့်ရန်</b>\n\nထပ်မံပေါင်းထည့်ပေးမည့် <b>Token ပမာဏ (Credits)</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
         else:
             reseller_temp_data[user_id] = {"tg_id": text, "is_edit_mode": False}
             user_states[user_id] = "ADD_RES_NAME"
