@@ -569,7 +569,8 @@ def handle_menu_clicks(message):
         check_and_update_user_role(user_id, current_role_name)
 
         if not valid:
-            bot.reply_to(message, "🚫 <b>ခွင့်ပြုချက် မရှိပါ (သို့မဟုတ်) သက်တမ်းကုန်နေပါသည်။</b>\n\n⚠️ သင့် VIP သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်၍ Decrypt List ကို ပိတ်ထားပါသည်။\n\nကျေးဇူးပြု၍ သက်တမ်းတိုးရန် အောက်ပါ ခလုတ်မှတစ်ဆင့် Admin ထံသို့ ဆက်သွယ်နိုင်ပါသည်။", reply_markup=get_admin_contact_markup(), parse_mode="HTML")
+            bot.reply_to(message, "🚫 <b>ခွင့်ပြုချက် မရှိပါ (သို့မဟုတ်) သက်တမ်းကုန်နေပါသည်။</b>\n\n⚠️ သင့် VIP သက်တမ်းကုန်ဆုံးသွားပြီဖြစ်၍ Decrypt List ကို ပိတ်ထားပါသည်။", parse_mode="HTML")
+            return bot.send_message(message.chat.id, "👇 Admin အား ဆက်သွယ်ရန် ခလုတ်ကိုနှိပ်ပါ-", reply_markup=get_admin_contact_markup())
             
         configs = get_vpn_configs()
 
