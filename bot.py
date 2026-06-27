@@ -598,6 +598,29 @@ def handle_menu_clicks(message):
         user_states[user_id] = "ADD_VIP_ID"
         bot.reply_to(message, "👤 ထည့်သွင်းမည့် VIP အသုံးပြုသူ၏ <b>Telegram ID</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
 
+    elif text == "✏️ Edit VIP":
+        user_states[user_id] = "EDIT_VIP_ID"
+        bot.reply_to(message, "✏️ ပြင်ဆင်မည့် VIP အသုံးပြုသူ၏ <b>Telegram ID</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+
+    elif text == "🗑 Delete VIP":
+        user_states[user_id] = "DEL_VIP_ID"
+        bot.reply_to(message, "🗑 ဖျက်ထုတ်မည့် VIP အသုံးပြုသူ၏ <b>Telegram ID</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+
+    elif text == "👤 Create Reseller":
+        if not is_admin(user_id): return
+        user_states[user_id] = "ADD_RES_ID"
+        bot.reply_to(message, "👤 ဖန်တီးမည့် Reseller ၏ <b>Telegram ID</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+
+    elif text == "✏️ Edit Reseller":
+        if not is_admin(user_id): return
+        user_states[user_id] = "EDIT_RES_ID"
+        bot.reply_to(message, "✏️ ပြင်ဆင်မည့် Reseller ၏ <b>Telegram ID</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+
+    elif text == "🗑 Delete Reseller":
+        if not is_admin(user_id): return
+        user_states[user_id] = "DEL_RES_ID"
+        bot.reply_to(message, "🗑 ဖျက်ထုတ်မည့် Reseller ၏ <b>Telegram ID</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
+        
     elif text == "🔑 My VIP Users":
         conn = sqlite3.connect(DB_FILE, check_same_thread=False)
         cursor = conn.cursor()
@@ -618,19 +641,6 @@ def handle_menu_clicks(message):
             res += f"🆔 Telegram ID: <code>{r[0]}</code> | 👤 Name: <code>{r[1]}</code> | 📅 Expired: <code>{exp}</code>\n"
         bot.reply_to(message, res, parse_mode="HTML")
 
-    elif text == "✏️ Edit VIP":
-        user_states[user_id] = "EDIT_VIP_ID"
-        bot.reply_to(message, "✏️ ပြင်ဆင်မည့် VIP အသုံးပြုသူ၏ <b>Telegram ID</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
-
-    elif text == "🗑 Delete VIP":
-        user_states[user_id] = "DEL_VIP_ID"
-        bot.reply_to(message, "🗑 ဖျက်ထုတ်မည့် VIP အသုံးပြုသူ၏ <b>Telegram ID</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
-
-    elif text == "👤 Create Reseller":
-        if not is_admin(user_id): return
-        user_states[user_id] = "ADD_RES_ID"
-        bot.reply_to(message, "👤 ဖန်တီးမည့် Reseller ၏ <b>Telegram ID</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
-
     elif text == "📊 Reseller List":
         if not is_admin(user_id): return
         conn = sqlite3.connect(DB_FILE, check_same_thread=False)
@@ -644,16 +654,6 @@ def handle_menu_clicks(message):
             tk_display = "Unlimited ♾️" if r[2] == -1 else f"{r[2]} Tk"
             res += f"🆔 TG ID: <code>{r[0]}</code> | 👤 Name: {r[1]}\n🪙 Token: {tk_display} | ⏳ Expired: {r[3]}\n\n"
         bot.reply_to(message, res, parse_mode="HTML")
-
-    elif text == "✏️ Edit Reseller":
-        if not is_admin(user_id): return
-        user_states[user_id] = "EDIT_RES_ID"
-        bot.reply_to(message, "✏️ ပြင်ဆင်မည့် Reseller ၏ <b>Telegram ID</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
-
-    elif text == "🗑 Delete Reseller":
-        if not is_admin(user_id): return
-        user_states[user_id] = "DEL_RES_ID"
-        bot.reply_to(message, "🗑 ဖျက်ထုတ်မည့် Reseller ၏ <b>Telegram ID</b> ကို ရိုက်ထည့်ပေးပါ-", parse_mode="HTML")
 
     elif text == "🌐 View All VIPs":
         if not is_admin(user_id): return
